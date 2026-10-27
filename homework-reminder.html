@@ -1,0 +1,4842 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4f1eb">
+  <meta name="description" content="按截止时间自动排序的作业备忘录，支持紧急程度提醒与完成标记。">
+  <title>作业备忘 · Homework Desk</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232f5b4c'/%3E%3Cpath d='M18 33l9 9 19-21' fill='none' stroke='%23fff' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+
+  <style>
+    /* ============================================================
+       设计变量
+       ============================================================ */
+    :root {
+      --bg: #f4f1eb;
+      --bg-deep: #ece7dc;
+      --surface: #fffdf9;
+      --surface-soft: #faf7f0;
+      --ink: #202a24;
+      --ink-soft: #3a463f;
+      --muted: #7a8179;
+      --muted-strong: #5c665e;
+      --line: #e4dfd4;
+      --line-strong: #d7d0c2;
+      --green: #2f5b4c;
+      --green-dark: #234438;
+      --green-soft: #e7efe9;
+      --red: #b52d3b;
+      --red-strong: #8d1f2c;
+      --red-soft: #fcecec;
+      --orange: #bd650d;
+      --orange-strong: #9d5308;
+      --orange-soft: #fff2df;
+      --shadow-sm: 0 1px 2px rgba(52, 45, 31, 0.04), 0 10px 30px -24px rgba(52, 45, 31, 0.28);
+      --shadow-md: 0 2px 3px rgba(52, 45, 31, 0.03), 0 24px 55px -38px rgba(52, 45, 31, 0.4);
+      --font-sans: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont,
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+      --radius-lg: 26px;
+      --radius-md: 18px;
+      --radius-sm: 12px;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 3% -6%, rgba(170, 198, 177, 0.44), transparent 32%),
+        radial-gradient(circle at 98% 1%, rgba(235, 207, 166, 0.43), transparent 29%),
+        var(--bg);
+      font-family: var(--font-sans);
+      font-size: 15px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      opacity: 0.62;
+      background-image:
+        linear-gradient(rgba(71, 83, 73, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(71, 83, 73, 0.035) 1px, transparent 1px);
+      background-size: 34px 34px;
+      -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 72%);
+      mask-image: linear-gradient(to bottom, #000 0%, transparent 72%);
+    }
+
+    button {
+      font: inherit;
+    }
+
+    button,
+    a {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:focus-visible,
+    a:focus-visible {
+      outline: 3px solid rgba(47, 91, 76, 0.34);
+      outline-offset: 3px;
+    }
+
+    svg {
+      display: block;
+    }
+
+    .svg-sprite {
+      position: absolute;
+      width: 0;
+      height: 0;
+      overflow: hidden;
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .sr-only {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: -1px !important;
+      overflow: hidden !important;
+      clip: rect(0, 0, 0, 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+    }
+
+    /* ============================================================
+       滚动条：默认隐形，滚动时浮现（主页面）
+       ============================================================ */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(122, 129, 121, 0.4) transparent;
+    }
+
+    html {
+      scrollbar-width: none;
+    }
+
+    html::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      min-height: 48px;
+      border: 3px solid transparent;
+      border-radius: 999px;
+      background: rgba(122, 129, 121, 0.32);
+      background-clip: padding-box;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(47, 91, 76, 0.55);
+      background-clip: padding-box;
+    }
+
+    ::-webkit-scrollbar-thumb:active {
+      background: rgba(35, 68, 56, 0.72);
+      background-clip: padding-box;
+    }
+
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    .scroll-rail {
+      position: fixed;
+      top: var(--titlebar-h);
+      right: 0;
+      bottom: 0;
+      z-index: 65;
+      width: 12px;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .scroll-thumb {
+      position: absolute;
+      top: 0;
+      /* 右侧 4px 宽是缩放热区，滑块内缩 4px 才不会和它抢鼠标。 */
+      right: 4px;
+      width: 6px;
+      min-height: 36px;
+      border-radius: 999px;
+      background: rgba(122, 129, 121, 0.5);
+      opacity: 0;
+      pointer-events: auto;
+      transition: opacity 240ms ease, background 160ms ease, width 160ms ease, right 160ms ease;
+    }
+
+    .scroll-rail.is-visible .scroll-thumb {
+      opacity: 1;
+    }
+
+    .scroll-thumb:hover {
+      right: 3px;
+      width: 8px;
+      background: rgba(47, 91, 76, 0.62);
+    }
+
+    .scroll-hover-zone {
+      position: fixed;
+      top: var(--titlebar-h);
+      right: 0;
+      bottom: 0;
+      z-index: 64;
+      width: 14px;
+    }
+
+    /* ============================================================
+       页面结构
+       ============================================================ */
+    .page-shell {
+      width: min(1120px, calc(100% - 48px));
+      margin: 0 auto;
+      padding: calc(24px + var(--titlebar-h)) 0 38px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 2px 0 22px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 43px;
+      height: 43px;
+      border-radius: 14px;
+      color: #fff;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.14), transparent 48%),
+        var(--green);
+      box-shadow: 0 8px 18px -12px rgba(35, 68, 56, 0.9);
+    }
+
+    .brand-mark .icon {
+      width: 23px;
+      height: 23px;
+      stroke-width: 2.4;
+    }
+
+    .brand-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+    }
+
+    .brand-copy strong {
+      font-size: 17px;
+      font-weight: 760;
+      letter-spacing: 0.01em;
+    }
+
+    .brand-copy span {
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.19em;
+      white-space: nowrap;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    /* ============================================================
+       窗口框：独立细标题栏（无边框）
+       ============================================================ */
+    :root {
+      --titlebar-h: 0px;
+    }
+
+    html.is-desktop-app {
+      --titlebar-h: 38px;
+    }
+
+    .pywebview-drag-region {
+      cursor: default;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .app-titlebar {
+      position: fixed;
+      top: 0;
+      right: 0;
+      left: 0;
+      z-index: 80;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      height: var(--titlebar-h);
+      padding: 0 6px 0 14px;
+      border-bottom: 1px solid rgba(228, 223, 212, 0.7);
+      background: rgba(246, 243, 237, 0.84);
+      -webkit-backdrop-filter: blur(16px) saturate(1.06);
+      backdrop-filter: blur(16px) saturate(1.06);
+    }
+
+    html.is-desktop-app .app-titlebar {
+      display: flex;
+    }
+
+    .app-titlebar__brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 1 auto;
+      min-width: 0;
+    }
+
+    .app-titlebar__mark {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      color: #fff;
+      background: var(--green);
+      box-shadow: 0 4px 10px -7px rgba(35, 68, 56, 0.9);
+    }
+
+    .app-titlebar__mark .icon {
+      width: 12px;
+      height: 12px;
+      stroke-width: 2.6;
+    }
+
+    .app-titlebar__name {
+      overflow: hidden;
+      color: var(--ink-soft);
+      font-size: 12.5px;
+      font-weight: 680;
+      letter-spacing: 0.01em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .app-titlebar__meta {
+      color: var(--muted);
+      font-size: 10.5px;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .app-titlebar__meta::before {
+      content: "·";
+      margin-right: 6px;
+      color: #c3bcae;
+    }
+
+    .app-titlebar__drag {
+      flex: 1 1 auto;
+      align-self: stretch;
+      min-width: 40px;
+    }
+
+    .win-controls {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex: 0 0 auto;
+    }
+
+    .win-btn {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 30px;
+      padding: 0;
+      border: 0;
+      border-radius: 8px;
+      color: #6b756e;
+      background: transparent;
+      cursor: pointer;
+      transition: background 140ms ease, color 140ms ease;
+    }
+
+    .win-btn svg {
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .win-btn:hover {
+      color: var(--green-dark);
+      background: rgba(35, 68, 56, 0.08);
+    }
+
+    .win-btn:active {
+      background: rgba(35, 68, 56, 0.14);
+    }
+
+    .win-btn--close:hover {
+      color: #fff;
+      background: var(--red);
+    }
+
+    .win-btn--close:active {
+      background: var(--red-strong);
+    }
+
+    .win-btn .icon-restore {
+      display: none;
+    }
+
+    html[data-window-maximized="true"] .win-btn .icon-maximize {
+      display: none;
+    }
+
+    html[data-window-maximized="true"] .win-btn .icon-restore {
+      display: block;
+    }
+
+    .win-resize-layer {
+      position: fixed;
+      inset: 0;
+      /* 必须高于标题栏（80），否则顶边热区会被标题栏挡住。 */
+      z-index: 90;
+      display: none;
+      pointer-events: none;
+    }
+
+    html.is-desktop-app .win-resize-layer {
+      display: block;
+    }
+
+    .win-resize-layer > div {
+      position: absolute;
+      pointer-events: auto;
+    }
+
+    .win-resize-layer [data-resize="top"],
+    .win-resize-layer [data-resize="bottom"] {
+      right: 10px;
+      left: 10px;
+      height: 5px;
+      cursor: ns-resize;
+    }
+
+    .win-resize-layer [data-resize="top"] {
+      top: 0;
+    }
+
+    .win-resize-layer [data-resize="bottom"] {
+      bottom: 0;
+    }
+
+    .win-resize-layer [data-resize="left"],
+    .win-resize-layer [data-resize="right"] {
+      top: 10px;
+      bottom: 10px;
+      width: 4px;
+      cursor: ew-resize;
+    }
+
+    .win-resize-layer [data-resize="left"] {
+      left: 0;
+    }
+
+    .win-resize-layer [data-resize="right"] {
+      right: 0;
+    }
+
+    .win-resize-layer [data-resize="top-left"],
+    .win-resize-layer [data-resize="top-right"],
+    .win-resize-layer [data-resize="bottom-left"],
+    .win-resize-layer [data-resize="bottom-right"] {
+      width: 14px;
+      height: 14px;
+    }
+
+    .win-resize-layer [data-resize="top-left"] {
+      top: 0;
+      left: 0;
+      cursor: nwse-resize;
+    }
+
+    .win-resize-layer [data-resize="top-right"] {
+      top: 0;
+      right: 0;
+      cursor: nesw-resize;
+    }
+
+    .win-resize-layer [data-resize="bottom-left"] {
+      bottom: 0;
+      left: 0;
+      cursor: nesw-resize;
+    }
+
+    .win-resize-layer [data-resize="bottom-right"] {
+      right: 0;
+      bottom: 0;
+      cursor: nwse-resize;
+    }
+
+    .update-block {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .source-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+      padding: 5px 9px;
+      border: 1px solid #d8e2da;
+      border-radius: 999px;
+      color: var(--green);
+      background: rgba(238, 245, 240, 0.82);
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .source-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #4c876a;
+      box-shadow: 0 0 0 3px rgba(76, 135, 106, 0.12);
+    }
+
+    .source-pill.is-loading .source-dot {
+      animation: softPulse 1.4s ease-in-out infinite;
+    }
+
+    .source-pill.is-error {
+      color: var(--red-strong);
+      border-color: #ebcfd0;
+      background: #fff4f3;
+    }
+
+    .source-pill.is-error .source-dot {
+      background: var(--red);
+      box-shadow: 0 0 0 3px rgba(181, 45, 59, 0.11);
+    }
+
+    .last-update {
+      color: var(--muted);
+      font-size: 11.5px;
+      white-space: nowrap;
+    }
+
+    .last-update time {
+      color: var(--muted-strong);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .refresh-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      flex: 0 0 auto;
+      min-height: 39px;
+      padding: 8px 14px;
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      color: var(--ink-soft);
+      background: rgba(255, 253, 249, 0.74);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.65) inset;
+      font-size: 12.5px;
+      font-weight: 650;
+      cursor: pointer;
+      transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .refresh-btn:hover:not(:disabled) {
+      color: var(--green-dark);
+      border-color: #c5d2c7;
+      background: #fffdf9;
+      transform: translateY(-1px);
+    }
+
+    .refresh-btn:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .refresh-btn:disabled {
+      cursor: wait;
+      opacity: 0.74;
+    }
+
+    .refresh-btn .icon {
+      width: 15px;
+      height: 15px;
+    }
+
+    .refresh-btn.is-loading .refresh-icon {
+      animation: spin 0.8s linear infinite;
+    }
+
+    /* ============================================================
+       首屏
+       ============================================================ */
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 286px;
+      align-items: center;
+      gap: clamp(30px, 6vw, 78px);
+      padding: 32px 4px 38px;
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0;
+      color: var(--green);
+      font-size: 11.5px;
+      font-weight: 750;
+      letter-spacing: 0.075em;
+    }
+
+    .eyebrow-line {
+      width: 28px;
+      height: 1px;
+      background: currentColor;
+      opacity: 0.55;
+    }
+
+    .eyebrow-sep {
+      color: #a7a095;
+      font-weight: 500;
+    }
+
+    .eyebrow-english {
+      color: #8c948b;
+      font-size: 9.5px;
+      letter-spacing: 0.16em;
+    }
+
+    .hero h1 {
+      margin: 16px 0 15px;
+      font-size: clamp(43px, 5.3vw, 64px);
+      font-weight: 800;
+      line-height: 1.07;
+      letter-spacing: -0.055em;
+    }
+
+    .hero-emphasis {
+      position: relative;
+      z-index: 0;
+      display: inline-block;
+      color: var(--green);
+    }
+
+    .hero-emphasis::after {
+      content: "";
+      position: absolute;
+      right: -2px;
+      bottom: 4px;
+      left: 1px;
+      z-index: -1;
+      height: 0.24em;
+      border-radius: 3px 7px 4px 8px;
+      background: #dbe7d5;
+      transform: rotate(-1.2deg);
+    }
+
+    .hero-sub {
+      max-width: 530px;
+      margin: 0;
+      color: var(--muted-strong);
+      font-size: 14px;
+      line-height: 1.85;
+    }
+
+    .focus-card {
+      position: relative;
+      align-self: center;
+      justify-self: end;
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 286px;
+      min-height: 232px;
+      padding: 24px 21px 20px;
+      border: 1px solid #e4d8c0;
+      border-radius: 17px;
+      background:
+        linear-gradient(140deg, rgba(255, 255, 255, 0.65), transparent 55%),
+        #fbf5e6;
+      box-shadow:
+        0 17px 38px -28px rgba(71, 55, 28, 0.48),
+        0 2px 0 rgba(255, 255, 255, 0.8) inset;
+      transform: rotate(-1.35deg);
+      transition: background 240ms ease, border-color 240ms ease;
+    }
+
+    .focus-card::before {
+      content: "";
+      position: absolute;
+      inset: 7px;
+      border: 1px dashed rgba(121, 104, 70, 0.17);
+      border-radius: 12px;
+      pointer-events: none;
+    }
+
+    .focus-card__tape {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      width: 76px;
+      height: 23px;
+      border-radius: 2px;
+      background: rgba(188, 202, 174, 0.82);
+      box-shadow: 0 2px 4px rgba(78, 68, 43, 0.09);
+      transform: translateX(-50%) rotate(1.6deg);
+      backdrop-filter: blur(2px);
+    }
+
+    .focus-card[data-level="overdue"] {
+      border-color: #e8c9c7;
+      background:
+        linear-gradient(140deg, rgba(255, 255, 255, 0.62), transparent 55%),
+        #fff0ee;
+    }
+
+    .focus-card[data-level="urgent"] {
+      border-color: #ecd4cc;
+      background:
+        linear-gradient(140deg, rgba(255, 255, 255, 0.62), transparent 55%),
+        #fcf2e9;
+    }
+
+    .focus-card[data-level="near"] {
+      border-color: #eadcc1;
+      background:
+        linear-gradient(140deg, rgba(255, 255, 255, 0.62), transparent 55%),
+        #fcf6e9;
+    }
+
+    .focus-card__head {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .focus-kicker {
+      color: #85775d;
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+    }
+
+    .mini-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      color: var(--muted-strong);
+      background: rgba(255, 255, 255, 0.64);
+      font-size: 9.5px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .mini-badge[data-level="overdue"] {
+      color: #fff;
+      background: var(--red-strong);
+    }
+
+    .mini-badge[data-level="urgent"] {
+      color: var(--red-strong);
+      background: #f7dddc;
+    }
+
+    .mini-badge[data-level="near"] {
+      color: var(--orange-strong);
+      background: #f8e7cb;
+    }
+
+    .focus-card__body {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+    }
+
+    .focus-course {
+      display: block;
+      margin-bottom: 6px;
+      color: #8a7d65;
+      font-size: 10.5px;
+      font-weight: 650;
+      letter-spacing: 0.045em;
+      overflow-wrap: anywhere;
+    }
+
+    .focus-name {
+      display: -webkit-box;
+      overflow: hidden;
+      margin: 0;
+      color: #2f352e;
+      font-size: 18px;
+      font-weight: 760;
+      line-height: 1.5;
+      letter-spacing: -0.015em;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow-wrap: anywhere;
+    }
+
+    .focus-card__foot {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 18px;
+      padding-top: 13px;
+      border-top: 1px dashed rgba(121, 104, 70, 0.24);
+    }
+
+    .focus-card__foot span {
+      color: #8a7d65;
+      font-size: 9.5px;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+    }
+
+    .focus-card__foot strong {
+      color: var(--ink-soft);
+      font-size: 12.5px;
+      font-weight: 750;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    .focus-card[data-level="overdue"] .focus-card__foot strong {
+      color: var(--red-strong);
+    }
+
+    .focus-card[data-level="urgent"] .focus-card__foot strong {
+      color: var(--red);
+    }
+
+    .focus-card[data-level="near"] .focus-card__foot strong {
+      color: var(--orange-strong);
+    }
+
+    /* ============================================================
+       统计卡片
+       ============================================================ */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 13px;
+      margin: 0 0 28px;
+    }
+
+    .stat {
+      --stat-color: var(--green);
+      --stat-bg: var(--green-soft);
+      position: relative;
+      overflow: hidden;
+      padding: 18px 19px 16px;
+      border: 1px solid var(--line);
+      border-radius: 19px;
+      background: rgba(255, 253, 249, 0.8);
+      box-shadow: var(--shadow-sm);
+      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .stat::after {
+      content: "";
+      position: absolute;
+      right: 18px;
+      bottom: 0;
+      left: 18px;
+      height: 2px;
+      border-radius: 3px 3px 0 0;
+      background: var(--stat-color);
+      opacity: 0.42;
+    }
+
+    .stat:hover {
+      border-color: #d8d1c4;
+      background: rgba(255, 253, 249, 0.96);
+      transform: translateY(-2px);
+    }
+
+    .stat--urgent {
+      --stat-color: var(--red);
+      --stat-bg: var(--red-soft);
+    }
+
+    .stat--near {
+      --stat-color: var(--orange);
+      --stat-bg: var(--orange-soft);
+    }
+
+    .stat--overdue {
+      --stat-color: var(--red-strong);
+      --stat-bg: #f8e3e3;
+    }
+
+    .stat-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .stat-name {
+      color: var(--muted-strong);
+      font-size: 11.5px;
+      font-weight: 750;
+      letter-spacing: 0.06em;
+    }
+
+    .stat-symbol {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      color: var(--stat-color);
+      background: var(--stat-bg);
+    }
+
+    .stat-symbol .icon {
+      width: 16px;
+      height: 16px;
+    }
+
+    .stat-number {
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+      margin-top: 13px;
+    }
+
+    .stat-number strong {
+      color: var(--stat-color);
+      font-size: 42px;
+      font-weight: 800;
+      line-height: 0.95;
+      letter-spacing: -0.06em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat-number > span {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .stat-foot {
+      margin: 11px 0 0;
+      color: #90968e;
+      font-size: 10.5px;
+      letter-spacing: 0.01em;
+    }
+
+    .stat.is-zero .stat-number strong {
+      color: #b9b3a6;
+    }
+
+    .stat.is-zero .stat-symbol {
+      opacity: 0.56;
+    }
+
+    .stat.is-zero::after {
+      opacity: 0.16;
+    }
+
+    .stat-number strong.bump {
+      animation: numberBump 300ms ease;
+    }
+
+    /* ============================================================
+       作业面板
+       ============================================================ */
+    .board {
+      overflow: hidden;
+      border: 1px solid rgba(219, 212, 199, 0.88);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 253, 249, 0.84);
+      box-shadow: var(--shadow-md);
+      backdrop-filter: blur(10px);
+    }
+
+    .board-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 26px;
+      padding: 22px 25px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .board-title-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .board-title-row h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 780;
+      letter-spacing: -0.025em;
+    }
+
+    .board-count {
+      display: inline-flex;
+      align-items: center;
+      min-height: 23px;
+      padding: 3px 9px;
+      border: 1px solid #dce5dd;
+      border-radius: 999px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 10.5px;
+      font-weight: 750;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .board-sub {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 11.5px;
+    }
+
+    .legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 13px;
+      flex: 0 0 auto;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #81887f;
+      font-size: 10px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .legend-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #b7c0b7;
+    }
+
+    .legend-dot--overdue {
+      background: var(--red-strong);
+      box-shadow: 0 0 0 2px rgba(141, 31, 44, 0.11);
+    }
+
+    .legend-dot--urgent {
+      background: var(--red);
+    }
+
+    .legend-dot--near {
+      background: var(--orange);
+    }
+
+    .board-body {
+      min-height: 350px;
+      padding: 13px 17px 18px;
+    }
+
+    .alert {
+      display: flex;
+      align-items: flex-start;
+      gap: 11px;
+      margin: 14px 17px 0;
+      padding: 12px 13px;
+      border: 1px solid #ebcfd0;
+      border-radius: 13px;
+      background: #fff5f4;
+      color: var(--red-strong);
+    }
+
+    .alert-icon {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 27px;
+      height: 27px;
+      border-radius: 8px;
+      background: #f9dfe0;
+    }
+
+    .alert-icon .icon {
+      width: 15px;
+      height: 15px;
+    }
+
+    .alert-copy {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .alert-copy strong {
+      display: block;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .alert-copy p {
+      margin: 2px 0 0;
+      color: #8b4b51;
+      font-size: 11px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+
+    .alert-retry {
+      flex: 0 0 auto;
+      padding: 5px 10px;
+      border: 1px solid #e3bfc0;
+      border-radius: 8px;
+      color: var(--red-strong);
+      background: #fffaf9;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .alert-retry:hover {
+      background: #fff;
+    }
+
+    /* ---------- 分组 ---------- */
+    .group {
+      margin-top: 6px;
+    }
+
+    .group + .group {
+      margin-top: 20px;
+    }
+
+    .group-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+      padding: 8px 8px 9px;
+    }
+
+    .group-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted-strong);
+      font-size: 10.5px;
+      font-weight: 780;
+      letter-spacing: 0.11em;
+    }
+
+    .group-title .icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .group-title--overdue {
+      color: var(--red-strong);
+    }
+
+    .group-meta {
+      color: #979d94;
+      font-size: 10px;
+      letter-spacing: 0.01em;
+      text-align: right;
+    }
+
+    .group-meta--overdue {
+      color: #a65b62;
+      font-weight: 650;
+    }
+
+    .task-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    /* ---------- 作业卡片 ---------- */
+    .task {
+      --accent: #cbd4cb;
+      --accent-soft: transparent;
+      position: relative;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: start;
+      padding: 17px 17px 17px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+      transition:
+        transform 180ms ease,
+        border-color 180ms ease,
+        box-shadow 180ms ease,
+        background 180ms ease,
+        opacity 220ms ease;
+    }
+
+    .task::before {
+      content: "";
+      position: absolute;
+      top: 16px;
+      bottom: 16px;
+      left: 0;
+      width: 3px;
+      border-radius: 0 4px 4px 0;
+      background: var(--accent);
+      opacity: 0.88;
+    }
+
+    .task:hover {
+      border-color: #d5cec0;
+      box-shadow: 0 8px 24px -21px rgba(54, 47, 32, 0.5);
+      transform: translateY(-1px);
+    }
+
+    .task--overdue {
+      --accent: var(--red-strong);
+      border-color: #e9cbcb;
+      background:
+        linear-gradient(102deg, #fff3f1 0%, #fffaf7 74%),
+        var(--surface);
+      box-shadow: 0 5px 22px -19px rgba(141, 31, 44, 0.62);
+    }
+
+    .task--urgent {
+      --accent: var(--red);
+      border-color: #efd5d2;
+      background:
+        linear-gradient(102deg, #fff7f5 0%, #fffdfb 74%),
+        var(--surface);
+    }
+
+    .task--near {
+      --accent: var(--orange);
+      border-color: #efdfc6;
+      background:
+        linear-gradient(102deg, #fffaf1 0%, #fffdfb 74%),
+        var(--surface);
+    }
+
+    .task--normal {
+      --accent: #b9c9be;
+    }
+
+    .task.is-removing {
+      pointer-events: none;
+      opacity: 0;
+      transform: translateX(16px) scale(0.985);
+    }
+
+    .task-checkcell {
+      grid-column: 1;
+      grid-row: 1;
+      padding-top: 3px;
+    }
+
+    .task-check {
+      display: grid;
+      place-items: center;
+      width: 25px;
+      height: 25px;
+      padding: 0;
+      border: 1.5px solid #c9c3b7;
+      border-radius: 8px;
+      color: transparent;
+      background: rgba(255, 255, 255, 0.72);
+      cursor: pointer;
+      transition: color 160ms ease, border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    }
+
+    .task-check .icon {
+      width: 14px;
+      height: 14px;
+      stroke-width: 2.8;
+    }
+
+    .task-check:hover:not(:disabled) {
+      color: var(--green);
+      border-color: #8eaa99;
+      background: var(--green-soft);
+      transform: scale(1.06);
+    }
+
+    .task--overdue .task-check:hover:not(:disabled) {
+      color: var(--red-strong);
+      border-color: #d7a4a7;
+      background: #fbe5e5;
+    }
+
+    .task-check:disabled {
+      cursor: wait;
+    }
+
+    .task-check.is-saving {
+      color: var(--green);
+      border-color: #a7bcae;
+      background: var(--green-soft);
+    }
+
+    .task-check.is-saving .icon {
+      animation: spin 0.8s linear infinite;
+      stroke-width: 2;
+    }
+
+    .task-main {
+      grid-column: 2;
+      grid-row: 1;
+      min-width: 0;
+    }
+
+    .task-topline {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .course-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      max-width: 100%;
+      padding: 3px 8px;
+      border: 1px solid #e7e1d5;
+      border-radius: 999px;
+      color: #6c766d;
+      background: #f5f1e9;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      overflow-wrap: anywhere;
+    }
+
+    .course-chip::before {
+      content: "";
+      flex: 0 0 auto;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #7e9886;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 9.5px;
+      font-weight: 800;
+      line-height: 1.45;
+      letter-spacing: 0.055em;
+      white-space: nowrap;
+    }
+
+    .status-pill--overdue {
+      color: #fff;
+      background: var(--red-strong);
+      box-shadow: 0 2px 7px -4px rgba(141, 31, 44, 0.75);
+    }
+
+    .status-pill--urgent {
+      color: var(--red-strong);
+      background: #f9dfe0;
+    }
+
+    .status-pill--near {
+      color: var(--orange-strong);
+      background: #fbe9cf;
+    }
+
+    .status-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .status-pill--overdue .status-dot {
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.16);
+    }
+
+    .status-pill--urgent .status-dot {
+      animation: softPulse 1.8s ease-in-out infinite;
+    }
+
+    .task-title {
+      margin: 0;
+      color: #27312b;
+      font-size: 15.5px;
+      font-weight: 730;
+      line-height: 1.46;
+      letter-spacing: -0.012em;
+      overflow-wrap: anywhere;
+    }
+
+    .task-note {
+      display: -webkit-box;
+      overflow: hidden;
+      margin: 4px 0 0;
+      color: #7d847b;
+      font-size: 12px;
+      line-height: 1.65;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow-wrap: anywhere;
+    }
+
+    .note-label {
+      display: inline-block;
+      margin-right: 5px;
+      padding: 0 4px;
+      border-radius: 3px;
+      color: #8e897d;
+      background: #f3eee4;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1.65;
+      letter-spacing: 0.04em;
+      vertical-align: 1px;
+    }
+
+    .task-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px 13px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .task-due {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .task-due .icon {
+      width: 13px;
+      height: 13px;
+      color: #929a91;
+    }
+
+    .task-due strong {
+      color: #5d675f;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .task--overdue .task-due .icon {
+      color: #b26a70;
+    }
+
+    .task--overdue .task-due strong {
+      color: #8e4a51;
+    }
+
+    .task-side {
+      grid-column: 3;
+      grid-row: 1;
+      align-self: center;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 3px;
+      min-width: 116px;
+      padding-left: 16px;
+      border-left: 1px dashed #e4ded2;
+      text-align: right;
+    }
+
+    .countdown-label {
+      color: #969d94;
+      font-size: 9px;
+      font-weight: 750;
+      letter-spacing: 0.09em;
+      white-space: nowrap;
+    }
+
+    .countdown-value {
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 1.45;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .task--overdue .task-side {
+      border-left-color: #edd3d3;
+    }
+
+    .task--overdue .countdown-label {
+      color: #ad6d73;
+    }
+
+    .task--overdue .countdown-value {
+      color: var(--red-strong);
+      font-size: 14px;
+    }
+
+    .task--urgent .countdown-value {
+      color: var(--red);
+    }
+
+    .task--near .countdown-value {
+      color: var(--orange-strong);
+    }
+
+    /* ---------- 加载 / 空 / 错误 ---------- */
+    .skeleton-list {
+      display: grid;
+      gap: 9px;
+      padding-top: 8px;
+    }
+
+    .skeleton-task {
+      display: grid;
+      grid-template-columns: 25px minmax(0, 1fr) 100px;
+      gap: 14px;
+      align-items: center;
+      padding: 18px 17px 18px 16px;
+      border: 1px solid #ebe6dc;
+      border-radius: 16px;
+      background: #fffdfa;
+    }
+
+    .skeleton-check {
+      width: 25px;
+      height: 25px;
+      border-radius: 8px;
+      background: #f0ece3;
+    }
+
+    .skeleton-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .skeleton-line {
+      height: 10px;
+      border-radius: 999px;
+      background: #f0ece3;
+    }
+
+    .skeleton-line--short {
+      width: 29%;
+      height: 8px;
+    }
+
+    .skeleton-line--title {
+      width: 68%;
+      height: 13px;
+    }
+
+    .skeleton-line--meta {
+      width: 44%;
+      height: 8px;
+    }
+
+    .skeleton-side {
+      height: 12px;
+      border-radius: 999px;
+      background: #f0ece3;
+    }
+
+    .skeleton-check,
+    .skeleton-line,
+    .skeleton-side {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .skeleton-check::after,
+    .skeleton-line::after,
+    .skeleton-side::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+      transform: translateX(-100%);
+      animation: shimmer 1.35s infinite;
+    }
+
+    .state-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 305px;
+      padding: 36px 22px;
+      text-align: center;
+    }
+
+    .state-icon {
+      display: grid;
+      place-items: center;
+      width: 58px;
+      height: 58px;
+      margin-bottom: 16px;
+      border-radius: 18px;
+      color: var(--green);
+      background: var(--green-soft);
+      box-shadow: 0 0 0 7px rgba(231, 239, 233, 0.46);
+    }
+
+    .state-icon .icon {
+      width: 26px;
+      height: 26px;
+      stroke-width: 2.1;
+    }
+
+    .state-card--error .state-icon {
+      color: var(--red-strong);
+      background: #fae4e4;
+      box-shadow: 0 0 0 7px rgba(250, 228, 228, 0.48);
+    }
+
+    .state-card h3 {
+      margin: 0 0 7px;
+      font-size: 17px;
+      font-weight: 760;
+      letter-spacing: -0.02em;
+    }
+
+    .state-card p {
+      max-width: 450px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 12.5px;
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+    }
+
+    .state-action {
+      margin-top: 18px;
+      padding: 8px 14px;
+      border: 1px solid #cad6cc;
+      border-radius: 10px;
+      color: var(--green-dark);
+      background: #f7faf7;
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 160ms ease, transform 160ms ease;
+    }
+
+    .state-action:hover {
+      background: #fff;
+      transform: translateY(-1px);
+    }
+
+    /* ============================================================
+       页脚 / 提示
+       ============================================================ */
+    .page-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 20px 6px 0;
+      color: #969b93;
+      font-size: 10px;
+      line-height: 1.6;
+    }
+
+    .page-footer span:last-child {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 26px;
+      left: 50%;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      max-width: min(480px, calc(100vw - 32px));
+      padding: 11px 15px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 13px;
+      color: #f9fbf8;
+      background: #293a32;
+      box-shadow: 0 18px 40px -20px rgba(24, 35, 29, 0.78);
+      font-size: 12.5px;
+      font-weight: 600;
+      line-height: 1.5;
+      opacity: 0;
+      visibility: hidden;
+      transform: translate(-50%, 14px);
+      transition: opacity 200ms ease, transform 200ms ease, visibility 200ms;
+    }
+
+    .toast.is-visible {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, 0);
+    }
+
+    .toast--error {
+      background: #792530;
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .toast-icon {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 21px;
+      height: 21px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .toast-icon .icon {
+      width: 12px;
+      height: 12px;
+      stroke-width: 2.5;
+    }
+
+    /* ============================================================
+       动效
+       ============================================================ */
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes shimmer {
+      to {
+        transform: translateX(100%);
+      }
+    }
+
+    @keyframes softPulse {
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.42;
+      }
+    }
+
+    @keyframes numberBump {
+      0% {
+        transform: translateY(2px);
+        opacity: 0.6;
+      }
+      100% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* ============================================================
+       响应式
+       ============================================================ */
+    @media (max-width: 940px) {
+      .hero {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0;
+        padding-top: 24px;
+      }
+
+      .focus-card {
+        display: none;
+      }
+
+      .hero h1 {
+        font-size: clamp(42px, 8vw, 58px);
+      }
+
+      .stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .page-shell {
+        width: min(100% - 30px, 680px);
+        padding-top: calc(17px + var(--titlebar-h));
+      }
+
+      .topbar {
+        align-items: flex-start;
+        gap: 12px;
+        padding-bottom: 15px;
+      }
+
+      .brand-mark {
+        width: 39px;
+        height: 39px;
+        border-radius: 12px;
+      }
+
+      .brand-copy strong {
+        font-size: 15.5px;
+      }
+
+      .brand-copy span {
+        font-size: 8px;
+      }
+
+      .top-actions {
+        gap: 10px;
+      }
+
+      .update-block {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+      }
+
+      .source-pill {
+        padding: 3px 7px;
+        font-size: 9.5px;
+      }
+
+      .last-update {
+        font-size: 9.5px;
+      }
+
+      .refresh-btn {
+        min-height: 37px;
+        padding: 8px 10px;
+      }
+
+      .refresh-btn span {
+        display: none;
+      }
+
+      .hero {
+        padding: 21px 1px 27px;
+      }
+
+      .hero h1 {
+        margin-top: 13px;
+        font-size: clamp(39px, 11vw, 53px);
+      }
+
+      .hero-sub {
+        font-size: 12.5px;
+        line-height: 1.8;
+        max-width: 470px;
+      }
+
+      .stats {
+        gap: 9px;
+        margin-bottom: 20px;
+      }
+
+      .stat {
+        padding: 14px 15px 13px;
+        border-radius: 16px;
+      }
+
+      .stat-name {
+        font-size: 10.5px;
+      }
+
+      .stat-symbol {
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+      }
+
+      .stat-symbol .icon {
+        width: 14px;
+        height: 14px;
+      }
+
+      .stat-number {
+        margin-top: 11px;
+      }
+
+      .stat-number strong {
+        font-size: 35px;
+      }
+
+      .stat-foot {
+        margin-top: 8px;
+        font-size: 9.5px;
+      }
+
+      .board {
+        border-radius: 21px;
+      }
+
+      .board-head {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 10px;
+        padding: 18px 17px 15px;
+      }
+
+      .board-title-row h2 {
+        font-size: 18px;
+      }
+
+      .board-sub {
+        font-size: 10.5px;
+      }
+
+      .legend {
+        gap: 5px 11px;
+      }
+
+      .legend-item {
+        font-size: 9.5px;
+      }
+
+      .board-body {
+        min-height: 310px;
+        padding: 10px 10px 13px;
+      }
+
+      .alert {
+        margin: 10px 10px 0;
+      }
+
+      .group-head {
+        padding: 7px 6px 8px;
+      }
+
+      .group-meta {
+        font-size: 9px;
+      }
+
+      .task {
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 11px;
+        padding: 14px 13px 13px;
+      }
+
+      .task::before {
+        top: 13px;
+        bottom: 13px;
+      }
+
+      .task-side {
+        grid-column: 2;
+        grid-row: 2;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        align-self: stretch;
+        gap: 8px;
+        width: 100%;
+        min-width: 0;
+        margin-top: 5px;
+        padding: 8px 0 0;
+        border-top: 1px dashed #e7e1d5;
+        border-left: 0;
+        text-align: left;
+      }
+
+      .task--overdue .task-side {
+        border-top-color: #ebd2d2;
+        border-left: 0;
+      }
+
+      .countdown-label {
+        font-size: 9px;
+      }
+
+      .countdown-value {
+        font-size: 12px;
+      }
+
+      .task--overdue .countdown-value {
+        font-size: 13px;
+      }
+
+      .task-title {
+        font-size: 14.5px;
+      }
+
+      .task-note {
+        font-size: 11.5px;
+      }
+
+      .task-meta {
+        margin-top: 6px;
+        font-size: 10.5px;
+      }
+
+      .skeleton-task {
+        grid-template-columns: 25px minmax(0, 1fr);
+        padding: 16px 13px;
+      }
+
+      .skeleton-side {
+        display: none;
+      }
+
+      .page-footer {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 4px;
+        padding-top: 16px;
+      }
+
+      .page-footer span:last-child {
+        text-align: left;
+        white-space: normal;
+      }
+
+      .toast {
+        bottom: 18px;
+      }
+    }
+
+    @media (max-width: 390px) {
+      .page-shell {
+        width: calc(100% - 22px);
+      }
+
+      .brand-copy span {
+        display: none;
+      }
+
+      .hero h1 {
+        font-size: 38px;
+      }
+
+      .stats {
+        gap: 7px;
+      }
+
+      .stat {
+        padding: 13px 12px 12px;
+      }
+
+      .stat-number strong {
+        font-size: 32px;
+      }
+
+      .stat-foot {
+        font-size: 9px;
+      }
+
+      .board-head {
+        padding-right: 14px;
+        padding-left: 14px;
+      }
+
+      .group-meta {
+        display: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ============================================================
+       深大优课连接 / 登录
+       ============================================================ */
+    .account-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+      min-height: 39px;
+      max-width: 180px;
+      padding: 5px 10px 5px 5px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--ink-soft);
+      background: rgba(255, 253, 249, 0.64);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    }
+
+    .account-btn:hover {
+      border-color: #c7d3c9;
+      background: #fffdf9;
+      transform: translateY(-1px);
+    }
+
+    .account-avatar {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 28px;
+      height: 28px;
+      border-radius: 9px;
+      color: #8a948b;
+      background: #efebe2;
+      transition: color 160ms ease, background 160ms ease;
+    }
+
+    .account-avatar .icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .account-copy {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      min-width: 0;
+      line-height: 1.3;
+    }
+
+    .account-label {
+      overflow: hidden;
+      max-width: 118px;
+      color: var(--ink-soft);
+      font-size: 10.5px;
+      font-weight: 750;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account-sub {
+      overflow: hidden;
+      max-width: 118px;
+      color: #969d94;
+      font-size: 8.5px;
+      font-weight: 600;
+      letter-spacing: 0.025em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account-btn[data-state="connected"] {
+      border-color: #d3dfd5;
+      background: rgba(246, 250, 246, 0.84);
+    }
+
+    .account-btn[data-state="connected"] .account-avatar {
+      color: #fff;
+      background: var(--green);
+    }
+
+    .account-btn[data-state="loading"] .account-avatar {
+      color: var(--green);
+      background: var(--green-soft);
+      animation: softPulse 1.5s ease-in-out infinite;
+    }
+
+    .account-btn[data-state="required"] .account-avatar {
+      color: var(--red-strong);
+      background: #fae6e5;
+    }
+
+    .account-btn[data-state="demo"] .account-avatar {
+      color: var(--orange-strong);
+      background: var(--orange-soft);
+    }
+
+    .type-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 7px;
+      border-radius: 999px;
+      color: #8a8376;
+      background: #f6f2ea;
+      font-size: 9.5px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .completion-note {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 14px 7px 2px;
+      color: #9a9f97;
+      font-size: 9.5px;
+      line-height: 1.55;
+    }
+
+    .completion-note .icon {
+      width: 12px;
+      height: 12px;
+      flex: 0 0 auto;
+    }
+
+    /* ---------- 登录对话框 ---------- */
+    .auth-dialog {
+      width: min(460px, calc(100vw - 30px));
+      max-height: calc(100vh - 34px);
+      margin: auto;
+      padding: 0;
+      border: 0;
+      border-radius: 24px;
+      color: var(--ink);
+      background: transparent;
+      overflow: visible;
+    }
+
+    .auth-dialog::backdrop {
+      background: rgba(28, 38, 32, 0.53);
+      backdrop-filter: blur(5px);
+    }
+
+    .auth-dialog[open] .auth-panel {
+      animation: dialogIn 220ms cubic-bezier(0.2, 0.8, 0.25, 1);
+    }
+
+    .auth-panel {
+      position: relative;
+      max-height: calc(100vh - 34px);
+      padding: 27px 27px 22px;
+      border: 1px solid #e5ded0;
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at 100% 0%, rgba(226, 236, 220, 0.8), transparent 31%),
+        var(--surface);
+      box-shadow: 0 34px 90px -30px rgba(28, 37, 31, 0.55);
+      overflow: auto;
+    }
+
+    .auth-close {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 1px solid #e7e1d5;
+      border-radius: 9px;
+      color: #8d948c;
+      background: rgba(255, 253, 249, 0.8);
+      cursor: pointer;
+      transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    .auth-close:hover {
+      color: var(--ink);
+      border-color: #d3cbbc;
+      background: #fff;
+    }
+
+    .auth-close .icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .auth-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 13px;
+      padding-right: 28px;
+    }
+
+    .auth-mark {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 43px;
+      height: 43px;
+      border-radius: 13px;
+      color: #fff;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.14), transparent 50%),
+        var(--green);
+      box-shadow: 0 10px 20px -15px rgba(35, 68, 56, 0.9);
+    }
+
+    .auth-mark .icon {
+      width: 20px;
+      height: 20px;
+      stroke-width: 2.1;
+    }
+
+    .auth-eyebrow {
+      margin: 1px 0 4px;
+      color: #8c948b;
+      font-size: 8.5px;
+      font-weight: 800;
+      letter-spacing: 0.17em;
+    }
+
+    .auth-header h2 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.035em;
+      line-height: 1.25;
+    }
+
+    .auth-desc {
+      margin: 16px 0 0;
+      color: var(--muted-strong);
+      font-size: 12px;
+      line-height: 1.75;
+    }
+
+    .auth-current {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 13px;
+      padding: 8px 10px;
+      border: 1px solid #dce7de;
+      border-radius: 10px;
+      color: var(--green-dark);
+      background: #f2f8f3;
+      font-size: 10.5px;
+      font-weight: 650;
+    }
+
+    .auth-current::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #4c876a;
+      box-shadow: 0 0 0 3px rgba(76, 135, 106, 0.12);
+    }
+
+    .auth-form {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .auth-field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .auth-field > span:first-child {
+      color: #6f786f;
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: 0.045em;
+    }
+
+    .auth-input-wrap {
+      position: relative;
+    }
+
+    .auth-input {
+      width: 100%;
+      min-height: 43px;
+      padding: 10px 12px;
+      border: 1px solid #ddd6c8;
+      border-radius: 11px;
+      color: var(--ink);
+      background: #fffefa;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }
+
+    .auth-input::placeholder {
+      color: #b0ada3;
+    }
+
+    .auth-input:focus {
+      border-color: #91aa9a;
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(47, 91, 76, 0.09);
+    }
+
+    .auth-input--password {
+      padding-right: 50px;
+    }
+
+    .password-toggle {
+      position: absolute;
+      top: 50%;
+      right: 7px;
+      padding: 4px 5px;
+      border: 0;
+      border-radius: 5px;
+      color: #90978f;
+      background: transparent;
+      font-size: 9.5px;
+      font-weight: 650;
+      cursor: pointer;
+      transform: translateY(-50%);
+    }
+
+    .password-toggle:hover {
+      color: var(--green-dark);
+      background: var(--green-soft);
+    }
+
+    .captcha-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .captcha-image {
+      display: block;
+      width: 116px;
+      height: 43px;
+      border: 1px solid #ddd6c8;
+      border-radius: 9px;
+      object-fit: cover;
+      background: #f4f0e8;
+      cursor: pointer;
+    }
+
+    .auth-remember {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-top: 1px;
+      color: #626d64;
+      font-size: 10.5px;
+      line-height: 1.6;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .auth-remember input {
+      width: 15px;
+      height: 15px;
+      margin: 1px 0 0;
+      accent-color: var(--green);
+      flex: 0 0 auto;
+    }
+
+    .auth-security {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      margin: 0;
+      padding: 9px 10px;
+      border: 1px solid #e7e1d5;
+      border-radius: 9px;
+      color: #8b9189;
+      background: #faf7f0;
+      font-size: 9.5px;
+      line-height: 1.65;
+    }
+
+    .auth-security .icon {
+      flex: 0 0 auto;
+      width: 12px;
+      height: 12px;
+      margin-top: 1px;
+    }
+
+    .auth-error {
+      margin: 0;
+      padding: 8px 10px;
+      border: 1px solid #eccfd0;
+      border-radius: 9px;
+      color: var(--red-strong);
+      background: #fff4f3;
+      font-size: 10.5px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+
+    .auth-submit {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 44px;
+      margin-top: 2px;
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 11px;
+      color: #fff;
+      background: var(--green);
+      box-shadow: 0 10px 22px -16px rgba(35, 68, 56, 0.9);
+      font-size: 12.5px;
+      font-weight: 750;
+      cursor: pointer;
+      transition: background 160ms ease, transform 160ms ease, opacity 160ms ease;
+    }
+
+    .auth-submit:hover:not(:disabled) {
+      background: var(--green-dark);
+      transform: translateY(-1px);
+    }
+
+    .auth-submit:disabled {
+      cursor: wait;
+      opacity: 0.75;
+    }
+
+    .auth-submit .icon {
+      display: none;
+      width: 14px;
+      height: 14px;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .auth-submit.is-loading .icon {
+      display: block;
+    }
+
+    .auth-footer-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 15px;
+    }
+
+    .auth-footer-actions a,
+    .auth-footer-actions button {
+      border: 0;
+      padding: 2px 0;
+      color: #92998f;
+      background: transparent;
+      font-size: 9.5px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .auth-footer-actions a:hover,
+    .auth-footer-actions button:hover {
+      color: var(--green-dark);
+      text-decoration: underline;
+    }
+
+    .auth-logout {
+      color: #a5666b !important;
+    }
+
+    @keyframes dialogIn {
+      from {
+        opacity: 0;
+        transform: translateY(9px) scale(0.985);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .float-toggle.is-active {
+      color: #fff;
+      border-color: var(--green);
+      background: var(--green);
+      box-shadow: 0 6px 16px -12px rgba(35, 68, 56, 0.9);
+    }
+
+    .float-toggle.is-active:hover:not(:disabled) {
+      color: #fff;
+      border-color: var(--green-dark);
+      background: var(--green-dark);
+    }
+
+    @media (max-width: 760px) {
+      .account-btn {
+        max-width: none;
+        min-height: 37px;
+        padding: 4px;
+        border-radius: 11px;
+      }
+
+      .account-copy {
+        display: none;
+      }
+
+      .account-avatar {
+        width: 27px;
+        height: 27px;
+      }
+
+      .auth-panel {
+        padding: 23px 20px 18px;
+        border-radius: 20px;
+      }
+
+      .auth-header h2 {
+        font-size: 20px;
+      }
+
+      .auth-desc {
+        font-size: 11.5px;
+      }
+
+      .auth-close {
+        top: 13px;
+        right: 13px;
+      }
+    }
+
+    @media (max-width: 390px) {
+      .top-actions {
+        gap: 6px;
+      }
+
+      .account-btn,
+      .refresh-btn {
+        flex: 0 0 auto;
+      }
+
+      .auth-panel {
+        padding: 22px 16px 16px;
+      }
+
+      .captcha-image {
+        width: 100px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app-titlebar">
+    <div class="app-titlebar__brand pywebview-drag-region">
+      <span class="app-titlebar__mark" aria-hidden="true">
+        <svg class="icon"><use href="#i-check"></use></svg>
+      </span>
+      <span class="app-titlebar__name">作业备忘</span>
+      <span class="app-titlebar__meta">深大优课 · 桌面版</span>
+    </div>
+    <div class="app-titlebar__drag pywebview-drag-region" aria-hidden="true"></div>
+    <div class="win-controls" role="group" aria-label="窗口控制">
+      <button class="win-btn" type="button" data-win-action="minimize" title="最小化" aria-label="最小化">
+        <svg class="icon" aria-hidden="true"><use href="#i-win-min"></use></svg>
+      </button>
+      <button class="win-btn" type="button" data-win-action="toggle-maximize" title="最大化" aria-label="最大化">
+        <svg class="icon icon-maximize" aria-hidden="true"><use href="#i-win-max"></use></svg>
+        <svg class="icon icon-restore" aria-hidden="true"><use href="#i-win-restore"></use></svg>
+      </button>
+      <button class="win-btn win-btn--close" type="button" data-win-action="close" title="关闭" aria-label="关闭作业备忘">
+        <svg class="icon" aria-hidden="true"><use href="#i-win-close"></use></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- 图标库：内联 SVG，保证单文件离线可用 -->
+  <svg class="svg-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-check" viewBox="0 0 24 24">
+      <path d="M5 12.5l4.2 4.2L19 7.5"></path>
+    </symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24">
+      <path d="M20 11a8 8 0 0 0-14.9-4"></path>
+      <path d="M4 4v5h5"></path>
+      <path d="M4 13a8 8 0 0 0 14.9 4"></path>
+      <path d="M20 20v-5h-5"></path>
+    </symbol>
+    <symbol id="i-list" viewBox="0 0 24 24">
+      <path d="M9 6h11"></path>
+      <path d="M9 12h11"></path>
+      <path d="M9 18h11"></path>
+      <path d="M4.5 6h.01"></path>
+      <path d="M4.5 12h.01"></path>
+      <path d="M4.5 18h.01"></path>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.5"></circle>
+      <path d="M12 7.5V12l3 2"></path>
+    </symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24">
+      <path d="M13.2 3.5c.5 3.8-1.9 4.5-1.9 7.2 0 1.5 1 2.5 2.1 2.5 1.3 0 2.1-1 2.1-2.3 1.5 1.4 2.4 3.2 2.4 5.1a6 6 0 0 1-12 0c0-3.7 2.3-6.3 5-8.7.3 2 .9 2.9 1.6 3.5.1-3.1.2-5.1.7-7.3z"></path>
+    </symbol>
+    <symbol id="i-calendar-x" viewBox="0 0 24 24">
+      <path d="M6.5 3.5v3"></path>
+      <path d="M17.5 3.5v3"></path>
+      <rect x="3.5" y="5.5" width="17" height="15" rx="3"></rect>
+      <path d="M3.5 10h17"></path>
+      <path d="M9.5 13l5 5"></path>
+      <path d="M14.5 13l-5 5"></path>
+    </symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24">
+      <path d="M6.5 3.5v3"></path>
+      <path d="M17.5 3.5v3"></path>
+      <rect x="3.5" y="5.5" width="17" height="15" rx="3"></rect>
+      <path d="M3.5 10h17"></path>
+    </symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24">
+      <path d="M12 3l1.5 5.2L19 10l-5.5 1.8L12 17l-1.5-5.2L5 10l5.5-1.8L12 3z"></path>
+      <path d="M19 15.5l.6 2.1L21.5 18l-1.9.7-.6 2.1-.6-2.1-1.9-.7 1.9-.4.6-2.1z"></path>
+    </symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24">
+      <path d="M10.4 4.1 2.9 17.2A2 2 0 0 0 4.6 20h14.8a2 2 0 0 0 1.7-2.8L13.6 4.1a1.9 1.9 0 0 0-3.2 0z"></path>
+      <path d="M12 9v4"></path>
+      <path d="M12 16.5h.01"></path>
+    </symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24">
+      <path d="M4 5.5h16v13H4z"></path>
+      <path d="M4 13h4l1.5 2.5h5L16 13h4"></path>
+    </symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24">
+      <path d="M5 21V4"></path>
+      <path d="M5 4h11l-1.5 4L16 12H5"></path>
+    </symbol>
+    <symbol id="i-user" viewBox="0 0 24 24">
+      <circle cx="12" cy="8" r="3.5"></circle>
+      <path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"></path>
+    </symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24">
+      <rect x="4.5" y="10" width="15" height="10.5" rx="3"></rect>
+      <path d="M8 10V7.2a4 4 0 0 1 8 0V10"></path>
+      <path d="M12 14v2.5"></path>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24">
+      <path d="M6 6l12 12"></path>
+      <path d="M18 6L6 18"></path>
+    </symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24">
+      <path d="M12 3l7 3v5.3c0 4.4-2.9 7.9-7 9.7-4.1-1.8-7-5.3-7-9.7V6l7-3z"></path>
+      <path d="M9 12l2 2 4-4"></path>
+    </symbol>
+    <symbol id="i-arrow-up-right" viewBox="0 0 24 24">
+      <path d="M7 17L17 7"></path>
+      <path d="M8 7h9v9"></path>
+    </symbol>
+    <symbol id="i-pip" viewBox="0 0 24 24">
+      <rect x="3.5" y="5" width="17" height="14" rx="2.5"></rect>
+      <rect x="11.5" y="11" width="7.5" height="6.5" rx="1.5"></rect>
+    </symbol>
+    <symbol id="i-win-min" viewBox="0 0 24 24">
+      <path d="M5 12h14"></path>
+    </symbol>
+    <symbol id="i-win-max" viewBox="0 0 24 24">
+      <rect x="4.5" y="4.5" width="15" height="15" rx="2.5"></rect>
+    </symbol>
+    <symbol id="i-win-restore" viewBox="0 0 24 24">
+      <rect x="8" y="4.5" width="11.5" height="11.5" rx="2.2"></rect>
+      <path d="M15.8 18.1a2.2 2.2 0 0 1-2.2 1.9H6.4a2.2 2.2 0 0 1-2.2-2.2v-7.2a2.2 2.2 0 0 1 1.9-2.2"></path>
+    </symbol>
+    <symbol id="i-win-close" viewBox="0 0 24 24">
+      <path d="M6 6l12 12"></path>
+      <path d="M18 6L6 18"></path>
+    </symbol>
+  </svg>
+
+  <div class="page-shell">
+    <header class="topbar">
+      <div class="brand pywebview-drag-region" aria-label="作业备忘">
+        <div class="brand-mark" aria-hidden="true">
+          <svg class="icon"><use href="#i-check"></use></svg>
+        </div>
+        <div class="brand-copy">
+          <strong>作业备忘</strong>
+          <span>HOMEWORK DESK</span>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <button class="account-btn" id="accountBtn" type="button" data-state="required" aria-haspopup="dialog" aria-controls="authDialog" aria-label="登录深大优课">
+          <span class="account-avatar" aria-hidden="true"><svg class="icon"><use href="#i-user"></use></svg></span>
+          <span class="account-copy">
+            <span class="account-label" id="accountLabel">未登录</span>
+            <span class="account-sub" id="accountSub">连接深大优课</span>
+          </span>
+        </button>
+        <div class="update-block">
+          <span class="source-pill" id="sourcePill">
+            <span class="source-dot" aria-hidden="true"></span>
+            <span id="sourceLabel">正在连接</span>
+          </span>
+          <span class="last-update">最后更新 <time id="lastUpdated">—</time></span>
+        </div>
+        <button class="refresh-btn float-toggle" id="floatToggle" type="button" aria-label="打开悬浮窗" aria-pressed="false" title="打开悬浮窗">
+          <svg class="icon" aria-hidden="true"><use href="#i-pip"></use></svg>
+          <span>悬浮窗</span>
+        </button>
+        <button class="refresh-btn" id="refreshBtn" type="button" aria-label="刷新作业数据">
+          <svg class="icon refresh-icon" aria-hidden="true"><use href="#i-refresh"></use></svg>
+          <span>刷新</span>
+        </button>
+      </div>
+    </header>
+
+    <main id="mainContent">
+      <section class="hero" aria-labelledby="heroTitle">
+        <div class="hero-copy">
+          <p class="eyebrow">
+            <span class="eyebrow-line" aria-hidden="true"></span>
+            <span id="todayLabel">正在读取日期</span>
+            <span class="eyebrow-sep" aria-hidden="true">·</span>
+            <span class="eyebrow-english">DEADLINE FIRST</span>
+          </p>
+          <h1 id="heroTitle">把作业，<br><span class="hero-emphasis">一件件放下。</span></h1>
+          <p class="hero-sub">
+            只留下未完成的事项，按截止时间排好顺序。先处理最紧急的那一项，其余的，交给清单。
+          </p>
+        </div>
+
+        <aside class="focus-card" id="focusCard" data-level="normal" aria-label="当前最需要关注的作业">
+          <span class="focus-card__tape" aria-hidden="true"></span>
+          <div class="focus-card__head">
+            <span class="focus-kicker">当前焦点 / FOCUS</span>
+            <span class="mini-badge" id="focusBadge" data-level="normal">读取中</span>
+          </div>
+          <div class="focus-card__body">
+            <span class="focus-course" id="focusCourse">—</span>
+            <h2 class="focus-name" id="focusName">正在整理你的作业…</h2>
+          </div>
+          <div class="focus-card__foot">
+            <span id="focusTimeLabel">距离截止</span>
+            <strong id="focusCountdown">—</strong>
+          </div>
+        </aside>
+      </section>
+
+      <section class="stats" id="stats" aria-label="作业统计">
+        <article class="stat stat--total" id="statCardTotal">
+          <div class="stat-top">
+            <span class="stat-name">未完成</span>
+            <span class="stat-symbol" aria-hidden="true"><svg class="icon"><use href="#i-list"></use></svg></span>
+          </div>
+          <div class="stat-number"><strong id="statTotal">—</strong><span>项</span></div>
+          <p class="stat-foot">全部待办作业</p>
+        </article>
+
+        <article class="stat stat--urgent" id="statCardUrgent">
+          <div class="stat-top">
+            <span class="stat-name">紧急</span>
+            <span class="stat-symbol" aria-hidden="true"><svg class="icon"><use href="#i-flame"></use></svg></span>
+          </div>
+          <div class="stat-number"><strong id="statUrgent">—</strong><span>项</span></div>
+          <p class="stat-foot">48 小时内截止</p>
+        </article>
+
+        <article class="stat stat--near" id="statCardNear">
+          <div class="stat-top">
+            <span class="stat-name">临近</span>
+            <span class="stat-symbol" aria-hidden="true"><svg class="icon"><use href="#i-clock"></use></svg></span>
+          </div>
+          <div class="stat-number"><strong id="statNear">—</strong><span>项</span></div>
+          <p class="stat-foot">一周内截止</p>
+        </article>
+
+        <article class="stat stat--overdue" id="statCardOverdue">
+          <div class="stat-top">
+            <span class="stat-name">已逾期</span>
+            <span class="stat-symbol" aria-hidden="true"><svg class="icon"><use href="#i-calendar-x"></use></svg></span>
+          </div>
+          <div class="stat-number"><strong id="statOverdue">—</strong><span>项</span></div>
+          <p class="stat-foot">需要优先处理</p>
+        </article>
+      </section>
+
+      <section class="board" aria-labelledby="boardTitle">
+        <div class="board-head">
+          <div>
+            <div class="board-title-row">
+              <h2 id="boardTitle">待办作业</h2>
+              <span class="board-count" id="boardCount">读取中</span>
+            </div>
+            <p class="board-sub">逾期作业置顶 · 其余按截止时间升序 · 完成状态保存在本机</p>
+          </div>
+          <div class="legend" aria-label="紧急程度图例">
+            <span class="legend-item"><i class="legend-dot legend-dot--overdue" aria-hidden="true"></i>已逾期</span>
+            <span class="legend-item"><i class="legend-dot legend-dot--urgent" aria-hidden="true"></i>紧急</span>
+            <span class="legend-item"><i class="legend-dot legend-dot--near" aria-hidden="true"></i>临近</span>
+            <span class="legend-item"><i class="legend-dot" aria-hidden="true"></i>正常</span>
+          </div>
+        </div>
+
+        <div class="alert" id="errorBanner" role="alert" hidden>
+          <span class="alert-icon" aria-hidden="true"><svg class="icon"><use href="#i-alert"></use></svg></span>
+          <div class="alert-copy">
+            <strong>刷新失败，当前显示上次的数据</strong>
+            <p id="errorMessage"></p>
+          </div>
+          <button class="alert-retry" id="retryBtn" type="button">重试</button>
+        </div>
+
+        <div class="board-body">
+          <div id="taskList" aria-busy="true"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <span id="footerSource">正在连接深大优课…</span>
+      <span>所有截止时间均以本地时区显示 · 勾选完成不会替代 LMS 提交</span>
+    </footer>
+  </div>
+
+  <dialog class="auth-dialog" id="authDialog" aria-labelledby="authTitle" aria-describedby="authDesc">
+    <div class="auth-panel">
+      <button class="auth-close" id="authClose" type="button" aria-label="关闭登录窗口">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+      </button>
+
+      <header class="auth-header">
+        <span class="auth-mark" aria-hidden="true"><svg class="icon"><use href="#i-lock"></use></svg></span>
+        <div>
+          <p class="auth-eyebrow">LMS CONNECTION / 深大优课</p>
+          <h2 id="authTitle">连接你的作业清单</h2>
+        </div>
+      </header>
+
+      <p class="auth-desc" id="authDesc">
+        使用深圳大学统一身份认证登录。首次登录成功后，本机会安全保存登录状态，之后开机自动同步作业。
+      </p>
+
+      <div class="auth-current" id="authCurrent" hidden></div>
+
+      <form class="auth-form" id="authForm" novalidate>
+        <label class="auth-field">
+          <span>学号 / 用户名</span>
+          <span class="auth-input-wrap">
+            <input class="auth-input" id="authUsername" name="username" type="text" autocomplete="username" placeholder="请输入深大学号" maxlength="100" spellcheck="false">
+          </span>
+        </label>
+
+        <label class="auth-field">
+          <span>统一身份认证密码</span>
+          <span class="auth-input-wrap">
+            <input class="auth-input auth-input--password" id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="请输入密码" maxlength="256">
+            <button class="password-toggle" id="passwordToggle" type="button" aria-label="显示密码">显示</button>
+          </span>
+        </label>
+
+        <div class="auth-field" id="captchaField" hidden>
+          <span>图形验证码</span>
+          <div class="captcha-row">
+            <input class="auth-input" id="authCaptcha" name="captcha" type="text" inputmode="text" autocomplete="off" placeholder="输入图片中的字符" maxlength="10">
+            <img class="captcha-image" id="captchaImage" alt="点击刷新验证码" title="点击刷新验证码">
+          </div>
+        </div>
+
+        <label class="auth-remember">
+          <input id="authRemember" type="checkbox" checked>
+          <span>记住登录状态并在开机后自动登录（密码以 Windows 当前用户凭据加密保存）</span>
+        </label>
+
+        <p class="auth-security">
+          <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+          <span>账号密码只发送给 <strong>authserver.szu.edu.cn</strong>，并由本机服务保管；不会上传到第三方。若学校要求滑块验证，自动登录会暂停并提示稍后重试。</span>
+        </p>
+
+        <p class="auth-error" id="authError" role="alert" hidden></p>
+
+        <button class="auth-submit" id="authSubmit" type="submit">
+          <svg class="icon" aria-hidden="true"><use href="#i-refresh"></use></svg>
+          <span id="authSubmitLabel">登录并同步</span>
+        </button>
+      </form>
+
+      <div class="auth-footer-actions">
+        <a href="https://lms.szu.edu.cn/user/index" target="_blank" rel="noreferrer">打开深大优课 <span aria-hidden="true">↗</span></a>
+        <button class="auth-logout" id="authLogout" type="button" hidden>退出并清除登录信息</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <span class="toast-icon" aria-hidden="true"><svg class="icon"><use href="#i-check"></use></svg></span>
+    <span id="toastMessage"></span>
+  </div>
+
+  <script>
+    /*
+     * ============================================================
+     * 作业备忘 · 本地版前端
+     * ============================================================
+     * 页面由 homework_server.py 提供：
+     * - 通过本机 API 自动登录深大优课（TronClass）并读取 /api/todos
+     * - 账号密码由 Python 服务使用 Windows DPAPI 加密保存
+     * - 直接双击 HTML 文件时自动使用演示数据，方便离线预览
+     *
+     * “勾选完成”只会把作业从本应用隐藏，不会在 LMS 中提交作业。
+     * ============================================================
+     */
+    (() => {
+      'use strict';
+
+      const IS_LOCAL_APP =
+        (location.protocol === 'http:' || location.protocol === 'https:') &&
+        ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(location.hostname);
+      const IS_MOCK = !IS_LOCAL_APP;
+      const REQUEST_TIMEOUT = 60000;
+      const MINUTE = 60 * 1000;
+      const HOUR = 60 * MINUTE;
+      const DAY = 24 * HOUR;
+      const URGENT_LIMIT = 48 * HOUR;
+      const NEAR_LIMIT = 7 * DAY;
+      const MOCK_ANCHOR = Date.now();
+
+      const MOCK_ROWS = [
+        {
+          id: 'hw-net-lab',
+          name: '计算机网络 · 抓包实验报告',
+          course: '计算机网络',
+          dueOffset: -3 * HOUR - 20 * MINUTE,
+          completed: false,
+          notes: 'Wireshark 抓包结果已保存，补写实验分析与结论。'
+        },
+        {
+          id: 'hw-history-notes',
+          name: '中国近现代史 · 读书笔记',
+          course: '中国近现代史',
+          dueOffset: -27 * HOUR,
+          completed: false,
+          notes: '《乡土中国》第 3–5 章，不少于 800 字。'
+        },
+        {
+          id: 'hw-math-4',
+          name: '高等数学 · 第 4 章习题',
+          course: '高等数学',
+          dueOffset: 2 * HOUR + 15 * MINUTE,
+          completed: false,
+          notes: '重点检查 4.3 节第 7、9 题。'
+        },
+        {
+          id: 'hw-english-writing',
+          name: '大学英语 · Unit 3 写作',
+          course: '大学英语',
+          dueOffset: 31 * HOUR,
+          completed: false,
+          notes: 'Topic: The city I call home，不少于 250 词。'
+        },
+        {
+          id: 'hw-data-structure',
+          name: '数据结构 · 二叉树实验报告',
+          course: '数据结构',
+          dueOffset: 3 * DAY + 2 * HOUR,
+          completed: false,
+          notes: '补充测试用例截图，合并为 PDF 后提交。'
+        },
+        {
+          id: 'hw-linear-algebra',
+          name: '线性代数 · 矩阵练习',
+          course: '线性代数',
+          dueOffset: 6 * DAY + 4 * HOUR,
+          completed: false,
+          notes: '习题 2.4，需要写出完整推导过程。'
+        },
+        {
+          id: 'hw-programming',
+          name: '程序设计基础 · 课程项目',
+          course: '程序设计基础',
+          dueOffset: 9 * DAY + 3 * HOUR,
+          completed: false,
+          notes: '先完成需求文档，再实现命令行版本。'
+        },
+        {
+          id: 'hw-physics-preview',
+          name: '大学物理 · 实验预习报告',
+          course: '大学物理',
+          dueOffset: 16 * DAY,
+          completed: false,
+          notes: '阅读实验 5 指导书，提交两个预习问题。'
+        },
+        {
+          id: 'hw-policy-review',
+          name: '形势与政策 · 课程观后感',
+          course: '形势与政策',
+          dueOffset: -6 * HOUR,
+          completed: true,
+          notes: '这条已完成，不会出现在待办列表中。'
+        }
+      ];
+
+      const MOCK_ASSIGNMENTS = MOCK_ROWS.map((row) => ({
+        id: row.id,
+        name: row.name,
+        course: row.course,
+        dueDate: new Date(MOCK_ANCHOR + row.dueOffset).toISOString(),
+        completed: row.completed,
+        notes: row.notes,
+        type: '作业',
+        source: '演示数据'
+      }));
+
+      const FIELD_ALIASES = {
+        id: ['id', 'homeworkId', 'assignmentId', 'taskId', 'homework_id', 'assignment_id', 'task_id'],
+        name: ['name', 'title', 'homeworkName', 'assignmentName', 'homework_name', 'assignment_name', '作业名称'],
+        course: ['course', 'courseName', 'subject', 'course_name', '课程名称'],
+        dueDate: [
+          'dueDate', 'dueAt', 'deadline', 'dueTime', 'endTime', 'due_date', 'due_at',
+          'deadlineAt', '截止时间'
+        ],
+        completed: ['completed', 'isCompleted', 'done', 'status', 'is_completed', '完成状态'],
+        notes: ['notes', 'note', 'remark', 'remarks', 'description', '备注'],
+        type: ['type', 'kind', 'activityType', 'activity_type']
+      };
+
+      const TRUE_VALUES = new Set([
+        'true', '1', 'yes', 'y', 'completed', 'complete', 'done', 'finished',
+        '已完成', '完成'
+      ]);
+
+      const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+      const WEEKDAY_FULL = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+      const WINDOW_ID = window.crypto && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `desk-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const syncChannel = 'BroadcastChannel' in window
+        ? new BroadcastChannel('homework-desk')
+        : null;
+
+      const state = {
+        assignments: [],
+        completedIds: new Set(),
+        pendingCompletions: new Set(),
+        loading: false,
+        hasLoaded: false,
+        error: null,
+        authRequired: false,
+        auth: {
+          status: null,
+          user: null,
+          code: '',
+          message: '',
+          captchaType: '',
+          captchaImage: ''
+        },
+        lastUpdated: null,
+        loginPending: false,
+        toastTimer: null,
+        renderedAt: 0,
+        initialAuthPrompted: false,
+        floatingOpen: false,
+        floatingPopup: null,
+        floatingPopupTimer: null,
+        floatingStateTimer: null,
+        floatingToggling: false,
+        desktopBridgeReady: false
+      };
+
+      const els = {
+        sourcePill: document.getElementById('sourcePill'),
+        sourceLabel: document.getElementById('sourceLabel'),
+        lastUpdated: document.getElementById('lastUpdated'),
+        todayLabel: document.getElementById('todayLabel'),
+        refreshBtn: document.getElementById('refreshBtn'),
+        floatToggle: document.getElementById('floatToggle'),
+        taskList: document.getElementById('taskList'),
+        boardCount: document.getElementById('boardCount'),
+        errorBanner: document.getElementById('errorBanner'),
+        errorMessage: document.getElementById('errorMessage'),
+        retryBtn: document.getElementById('retryBtn'),
+        statTotal: document.getElementById('statTotal'),
+        statUrgent: document.getElementById('statUrgent'),
+        statNear: document.getElementById('statNear'),
+        statOverdue: document.getElementById('statOverdue'),
+        statCardTotal: document.getElementById('statCardTotal'),
+        statCardUrgent: document.getElementById('statCardUrgent'),
+        statCardNear: document.getElementById('statCardNear'),
+        statCardOverdue: document.getElementById('statCardOverdue'),
+        focusCard: document.getElementById('focusCard'),
+        focusBadge: document.getElementById('focusBadge'),
+        focusCourse: document.getElementById('focusCourse'),
+        focusName: document.getElementById('focusName'),
+        focusTimeLabel: document.getElementById('focusTimeLabel'),
+        focusCountdown: document.getElementById('focusCountdown'),
+        footerSource: document.getElementById('footerSource'),
+        toast: document.getElementById('toast'),
+        toastMessage: document.getElementById('toastMessage'),
+        accountBtn: document.getElementById('accountBtn'),
+        accountLabel: document.getElementById('accountLabel'),
+        accountSub: document.getElementById('accountSub'),
+        authDialog: document.getElementById('authDialog'),
+        authForm: document.getElementById('authForm'),
+        authClose: document.getElementById('authClose'),
+        authCurrent: document.getElementById('authCurrent'),
+        authUsername: document.getElementById('authUsername'),
+        authPassword: document.getElementById('authPassword'),
+        authRemember: document.getElementById('authRemember'),
+        authCaptcha: document.getElementById('authCaptcha'),
+        captchaField: document.getElementById('captchaField'),
+        captchaImage: document.getElementById('captchaImage'),
+        authError: document.getElementById('authError'),
+        authSubmit: document.getElementById('authSubmit'),
+        authSubmitLabel: document.getElementById('authSubmitLabel'),
+        passwordToggle: document.getElementById('passwordToggle'),
+        authLogout: document.getElementById('authLogout')
+      };
+
+      class ApiError extends Error {
+        constructor(message, options = {}) {
+          super(message);
+          this.name = 'ApiError';
+          this.code = options.code || '';
+          this.status = options.status || 0;
+          this.payload = options.payload || null;
+        }
+      }
+
+      /* ==========================================================
+         工具函数
+         ========================================================== */
+      function wait(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (character) => {
+          const entities = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+          };
+          return entities[character];
+        });
+      }
+
+      function pickField(source, keys) {
+        for (const key of keys) {
+          if (Object.prototype.hasOwnProperty.call(source, key)) {
+            const value = source[key];
+            if (value !== undefined && value !== null && value !== '') {
+              return value;
+            }
+          }
+        }
+        return undefined;
+      }
+
+      function toBoolean(value) {
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value === 1;
+        if (value === undefined || value === null) return false;
+        return TRUE_VALUES.has(String(value).trim().toLowerCase());
+      }
+
+      function normalizeDueDate(value) {
+        if (value === undefined || value === null || value === '') return null;
+
+        let date;
+        if (value instanceof Date) {
+          date = new Date(value.getTime());
+        } else if (typeof value === 'number') {
+          date = new Date(value < 1e12 ? value * 1000 : value);
+        } else {
+          const text = String(value).trim();
+          if (/^\d{10,13}$/.test(text)) {
+            const number = Number(text);
+            date = new Date(text.length === 10 ? number * 1000 : number);
+          } else {
+            date = new Date(text.includes(' ') && !text.includes('T') ? text.replace(' ', 'T') : text);
+          }
+        }
+
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+
+      function extractRows(payload) {
+        const candidates = [
+          payload,
+          payload && payload.data,
+          payload && payload.assignments,
+          payload && payload.homeworks,
+          payload && payload.homeworkList,
+          payload && payload.list,
+          payload && payload.items,
+          payload && payload.results,
+          payload && payload.data && payload.data.list,
+          payload && payload.data && payload.data.items,
+          payload && payload.data && payload.data.records,
+          payload && payload.data && payload.data.results
+        ];
+        return candidates.find(Array.isArray) || null;
+      }
+
+      function normalizeHomeworkList(payload) {
+        const rows = extractRows(payload);
+        if (!rows) {
+          throw new ApiError('接口数据格式不正确：没有找到作业列表。', { code: 'BAD_DATA' });
+        }
+
+        const normalized = [];
+        rows.forEach((row, index) => {
+          if (!row || typeof row !== 'object') return;
+
+          const dueDate = normalizeDueDate(pickField(row, FIELD_ALIASES.dueDate));
+          if (!dueDate) {
+            console.warn('[作业备忘] 跳过截止时间无效的记录：', row);
+            return;
+          }
+
+          const nameValue = pickField(row, FIELD_ALIASES.name);
+          const courseValue = pickField(row, FIELD_ALIASES.course);
+          const notesValue = pickField(row, FIELD_ALIASES.notes);
+          const idValue = pickField(row, FIELD_ALIASES.id);
+          const completedValue = pickField(row, FIELD_ALIASES.completed);
+          const typeValue = pickField(row, FIELD_ALIASES.type);
+
+          normalized.push({
+            id: String(idValue ?? `homework-${index}-${dueDate.getTime()}`),
+            name: String(nameValue ?? '未命名作业'),
+            course: String(courseValue ?? '未分类'),
+            dueDate: dueDate.toISOString(),
+            completed: toBoolean(completedValue),
+            notes: notesValue === undefined ? '' : String(notesValue),
+            type: typeValue === undefined ? '' : String(typeValue),
+            source: String(row.source ?? '')
+          });
+        });
+
+        return normalized;
+      }
+
+      function classifyHomework(item, now = Date.now()) {
+        const due = new Date(item.dueDate).getTime();
+        const remaining = due - now;
+
+        if (remaining <= 0) {
+          return { level: 'overdue', remaining, label: '已逾期' };
+        }
+        if (remaining <= URGENT_LIMIT) {
+          return { level: 'urgent', remaining, label: '紧急' };
+        }
+        if (remaining <= NEAR_LIMIT) {
+          return { level: 'near', remaining, label: '临近' };
+        }
+        return { level: 'normal', remaining, label: '' };
+      }
+
+      function formatDuration(ms) {
+        const totalMinutes = Math.max(0, Math.floor(Math.abs(ms) / MINUTE));
+        const days = Math.floor(totalMinutes / 1440);
+        const hours = Math.floor((totalMinutes % 1440) / 60);
+        const minutes = totalMinutes % 60;
+
+        if (days > 0) {
+          return hours > 0 ? `${days} 天 ${hours} 小时` : `${days} 天`;
+        }
+        if (hours > 0) {
+          return minutes > 0 ? `${hours} 小时 ${minutes} 分` : `${hours} 小时`;
+        }
+        return `${Math.max(1, minutes)} 分钟`;
+      }
+
+      function formatCountdown(remaining) {
+        if (remaining <= 0) {
+          if (Math.abs(remaining) < MINUTE) return '刚刚逾期';
+          return `逾期 ${formatDuration(remaining)}`;
+        }
+        if (remaining < MINUTE) return '剩不到 1 分钟';
+        return `剩 ${formatDuration(remaining)}`;
+      }
+
+      function pad(value) {
+        return String(value).padStart(2, '0');
+      }
+
+      function startOfDay(date) {
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      }
+
+      function formatDueDate(date, now = new Date()) {
+        const due = new Date(date);
+        const time = `${pad(due.getHours())}:${pad(due.getMinutes())}`;
+        const dayDifference = Math.round(
+          (startOfDay(due).getTime() - startOfDay(now).getTime()) / DAY
+        );
+
+        if (dayDifference === 0) return `今天 ${time}`;
+        if (dayDifference === 1) return `明天 ${time}`;
+        if (dayDifference === 2) return `后天 ${time}`;
+        if (dayDifference === -1) return `昨天 ${time}`;
+
+        const monthDay = `${due.getMonth() + 1}月${due.getDate()}日`;
+        if (due.getFullYear() === now.getFullYear()) {
+          return `${monthDay} ${WEEKDAYS[due.getDay()]} ${time}`;
+        }
+        return `${due.getFullYear()}年${monthDay} ${time}`;
+      }
+
+      function formatFullDate(date) {
+        return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      }
+
+      function formatUpdatedTime(date) {
+        if (!date) return '—';
+        const now = new Date();
+        const sameYear = date.getFullYear() === now.getFullYear();
+        const day = `${date.getMonth() + 1}月${date.getDate()}日`;
+        const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        return sameYear ? `${day} ${time}` : `${date.getFullYear()}年${day} ${time}`;
+      }
+
+      function formatToday(date) {
+        return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 · ${WEEKDAY_FULL[date.getDay()]}`;
+      }
+
+      function getVisibleItems(now = Date.now()) {
+        return state.assignments
+          .filter((item) => !item.completed && !state.completedIds.has(item.id))
+          .map((item) => ({
+            ...item,
+            meta: classifyHomework(item, now)
+          }));
+      }
+
+      function splitGroups(items) {
+        const sorted = [...items].sort(
+          (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+        );
+        const overdue = sorted.filter((item) => item.meta.level === 'overdue');
+        const upcoming = sorted.filter((item) => item.meta.level !== 'overdue');
+        return { overdue, upcoming, sorted };
+      }
+
+      function getCounts(items) {
+        return items.reduce(
+          (counts, item) => {
+            counts.total += 1;
+            if (item.meta.level === 'overdue') counts.overdue += 1;
+            if (item.meta.level === 'urgent') counts.urgent += 1;
+            if (item.meta.level === 'near') counts.near += 1;
+            return counts;
+          },
+          { total: 0, urgent: 0, near: 0, overdue: 0 }
+        );
+      }
+
+      /* ==========================================================
+         本机 API
+         ========================================================== */
+      async function requestJSON(path, options = {}) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+        const headers = {
+          Accept: 'application/json',
+          ...(options.headers || {})
+        };
+        if (options.body) headers['Content-Type'] = 'application/json';
+
+        try {
+          const response = await fetch(path, {
+            ...options,
+            headers,
+            cache: 'no-store',
+            signal: controller.signal
+          });
+          const text = await response.text();
+          let payload = {};
+          if (text) {
+            try {
+              payload = JSON.parse(text);
+            } catch {
+              payload = { message: text.slice(0, 200) };
+            }
+          }
+
+          if (!response.ok) {
+            throw new ApiError(payload.message || `本机服务返回 HTTP ${response.status}`, {
+              code: payload.code || `HTTP_${response.status}`,
+              status: response.status,
+              payload
+            });
+          }
+
+          return payload;
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            throw new ApiError('请求超时。自动登录可能耗时较长，请稍后重试。', {
+              code: 'TIMEOUT'
+            });
+          }
+          if (error instanceof ApiError) throw error;
+          throw new ApiError('无法连接本机服务。请确认应用仍在运行。', {
+            code: 'LOCAL_SERVER_UNAVAILABLE'
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      async function fetchAuthStatus() {
+        if (IS_MOCK) return null;
+        try {
+          const status = await requestJSON('/api/status');
+          state.auth.status = status;
+          if (status.username && !state.auth.user) {
+            state.auth.user = { username: status.username };
+          }
+          return status;
+        } catch (error) {
+          console.warn('[作业备忘] 读取登录状态失败：', error);
+          return null;
+        }
+      }
+
+      async function fetchHomeworkList({ force = false } = {}) {
+        if (IS_MOCK) {
+          await wait(520);
+          return {
+            assignments: normalizeHomeworkList(MOCK_ASSIGNMENTS),
+            updatedAt: new Date(),
+            user: { username: '演示模式' },
+            status: null
+          };
+        }
+
+        const suffix = force ? '?refresh=1' : '';
+        const payload = await requestJSON(`/api/homework${suffix}`, { method: 'GET' });
+        if (payload.status) state.auth.status = payload.status;
+        if (payload.user) state.auth.user = payload.user;
+
+        return {
+          assignments: normalizeHomeworkList(payload),
+          updatedAt: payload.updatedAt ? new Date(payload.updatedAt) : new Date(),
+          user: payload.user || null,
+          status: payload.status || null
+        };
+      }
+
+      async function markHomeworkCompleted(id, name) {
+        if (IS_MOCK) {
+          await wait(360);
+          return { ok: true };
+        }
+        return requestJSON(`/api/homework/${encodeURIComponent(id)}/complete`, {
+          method: 'POST',
+          body: JSON.stringify({ name })
+        });
+      }
+
+      /* ==========================================================
+         界面渲染
+         ========================================================== */
+      function setText(element, value) {
+        if (!element) return;
+        const next = String(value);
+        if (element.textContent !== next) {
+          element.textContent = next;
+        }
+      }
+
+      function bumpValue(element, value) {
+        if (!element) return;
+        const next = String(value);
+        if (element.textContent === next) return;
+        element.textContent = next;
+        element.classList.remove('bump');
+        void element.offsetWidth;
+        element.classList.add('bump');
+      }
+
+      function updateTodayLabel() {
+        setText(els.todayLabel, formatToday(new Date()));
+      }
+
+      function isConnected() {
+        return !IS_MOCK && Boolean(
+          (state.auth.status && state.auth.status.authenticated) ||
+          (state.hasLoaded && !state.authRequired)
+        );
+      }
+
+      function updateAccountUI() {
+        const status = state.auth.status || {};
+        const username =
+          (state.auth.user && state.auth.user.username) ||
+          status.username ||
+          '';
+        const connected = isConnected();
+
+        let label = '未登录';
+        let sub = '连接深大优课';
+        let visualState = 'required';
+
+        if (IS_MOCK) {
+          label = '演示模式';
+          sub = '本地预览';
+          visualState = 'demo';
+        } else if (state.loading && !state.hasLoaded && !state.authRequired) {
+          label = '连接中';
+          sub = '正在自动登录';
+          visualState = 'loading';
+        } else if (connected) {
+          label = username || '已连接';
+          sub = '深大优课';
+          visualState = 'connected';
+        } else if (state.authRequired) {
+          label = '未登录';
+          sub = '点击连接';
+          visualState = 'required';
+        }
+
+        setText(els.accountLabel, label);
+        setText(els.accountSub, sub);
+        els.accountBtn.dataset.state = visualState;
+        els.accountBtn.setAttribute(
+          'aria-label',
+          connected
+            ? `深大优课账号 ${username || ''}，点击管理登录`
+            : IS_MOCK
+              ? '演示模式，点击了解连接方式'
+              : '登录深大优课'
+        );
+      }
+
+      function updateSourceUI() {
+        const hasError = Boolean(state.error) || state.authRequired;
+        els.sourcePill.classList.toggle('is-loading', state.loading && !state.hasLoaded);
+        els.sourcePill.classList.toggle('is-error', hasError && !state.loading);
+
+        if (IS_MOCK) {
+          setText(els.sourceLabel, '演示模式');
+          return;
+        }
+        if (state.loading && !state.hasLoaded) {
+          setText(els.sourceLabel, '正在连接');
+          return;
+        }
+        if (state.authRequired) {
+          setText(els.sourceLabel, '未登录');
+          return;
+        }
+        if (state.error) {
+          setText(els.sourceLabel, '同步失败');
+          return;
+        }
+        setText(els.sourceLabel, '深大优课');
+      }
+
+      function updateRefreshUI() {
+        els.refreshBtn.classList.toggle('is-loading', state.loading);
+        els.refreshBtn.disabled = state.loading;
+        els.refreshBtn.setAttribute('aria-busy', String(state.loading));
+        els.refreshBtn.setAttribute('aria-label', state.loading ? '正在刷新作业数据' : '刷新作业数据');
+        const label = els.refreshBtn.querySelector('span');
+        if (label) setText(label, state.loading ? '刷新中' : '刷新');
+      }
+
+      function getDesktopApi() {
+        return window.pywebview && window.pywebview.api ? window.pywebview.api : null;
+      }
+
+      function updateFloatingUI() {
+        if (!els.floatToggle) return;
+        const open = Boolean(state.floatingOpen);
+        els.floatToggle.classList.toggle('is-active', open);
+        els.floatToggle.setAttribute('aria-pressed', String(open));
+        els.floatToggle.setAttribute('aria-label', open ? '关闭悬浮窗' : '打开悬浮窗');
+        els.floatToggle.title = open ? '关闭悬浮窗' : '打开悬浮窗';
+        const label = els.floatToggle.querySelector('span');
+        if (label) setText(label, open ? '收起悬浮' : '悬浮窗');
+      }
+
+      function setFloatingState(open) {
+        state.floatingOpen = Boolean(open);
+        updateFloatingUI();
+      }
+
+      function broadcastDataChanged() {
+        if (!syncChannel) return;
+        syncChannel.postMessage({ type: 'data-changed', sender: WINDOW_ID });
+      }
+
+      async function syncFloatingStateFromDesktop() {
+        const api = getDesktopApi();
+        if (!api || typeof api.get_floating_state !== 'function') return;
+        try {
+          const result = await api.get_floating_state();
+          if (result && typeof result.open === 'boolean') {
+            state.floatingOpen = result.open;
+            updateFloatingUI();
+          }
+        } catch {
+          // 窗口正在关闭时可能调用失败，忽略即可。
+        }
+      }
+
+      function clearFloatingPopupTimer() {
+        if (state.floatingPopupTimer) {
+          clearInterval(state.floatingPopupTimer);
+          state.floatingPopupTimer = null;
+        }
+      }
+
+      async function toggleFloatingMode() {
+        if (state.floatingToggling) return;
+        state.floatingToggling = true;
+
+        try {
+          let api = getDesktopApi();
+          if (!api && !IS_MOCK && !state.desktopBridgeReady) {
+            await wait(180);
+            api = getDesktopApi();
+          }
+
+          if (api && typeof api.toggle_floating === 'function') {
+            const result = await api.toggle_floating();
+            const open = typeof result === 'boolean'
+              ? result
+              : Boolean(result && result.open);
+            setFloatingState(open);
+            if (open && syncChannel) {
+              syncChannel.postMessage({ type: 'float-opened', sender: WINDOW_ID });
+            }
+            return;
+          }
+
+          if (IS_MOCK) {
+            showToast('悬浮窗需要通过桌面版应用打开。');
+            return;
+          }
+
+          if (state.floatingPopup && !state.floatingPopup.closed) {
+            state.floatingPopup.close();
+            state.floatingPopup = null;
+            clearFloatingPopupTimer();
+            setFloatingState(false);
+            return;
+          }
+
+          const width = 380;
+          const height = 500;
+          const left = Math.max(0, (window.screen.availWidth || 1440) - width - 24);
+          const top = 80;
+          const popup = window.open(
+            '/floating.html',
+            'homework-desk-floating',
+            `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no`
+          );
+
+          if (!popup) {
+            showToast('浏览器拦截了悬浮窗，请允许弹出窗口后重试。', 'error');
+            return;
+          }
+
+          state.floatingPopup = popup;
+          setFloatingState(true);
+          clearFloatingPopupTimer();
+          state.floatingPopupTimer = setInterval(() => {
+            if (!state.floatingPopup || state.floatingPopup.closed) {
+              state.floatingPopup = null;
+              clearFloatingPopupTimer();
+              setFloatingState(false);
+            }
+          }, 600);
+        } catch (error) {
+          console.error('[作业备忘] 切换悬浮窗失败：', error);
+          showToast('无法打开悬浮窗，请重试。', 'error');
+        } finally {
+          state.floatingToggling = false;
+        }
+      }
+
+      function updateLastUpdatedUI() {
+        if (state.lastUpdated) {
+          els.lastUpdated.textContent = formatUpdatedTime(state.lastUpdated);
+          els.lastUpdated.dateTime = state.lastUpdated.toISOString();
+          els.lastUpdated.title = formatFullDate(state.lastUpdated);
+        } else if (state.loading) {
+          els.lastUpdated.textContent = IS_MOCK ? '正在准备演示数据…' : '正在自动登录…';
+          els.lastUpdated.removeAttribute('datetime');
+          els.lastUpdated.removeAttribute('title');
+        } else if (state.authRequired) {
+          els.lastUpdated.textContent = '尚未登录';
+          els.lastUpdated.removeAttribute('datetime');
+          els.lastUpdated.removeAttribute('title');
+        } else if (state.error) {
+          els.lastUpdated.textContent = '尚未同步';
+          els.lastUpdated.removeAttribute('datetime');
+          els.lastUpdated.removeAttribute('title');
+        } else {
+          els.lastUpdated.textContent = '—';
+          els.lastUpdated.removeAttribute('datetime');
+          els.lastUpdated.removeAttribute('title');
+        }
+      }
+
+      function updateFooter() {
+        if (IS_MOCK) {
+          setText(els.footerSource, '当前为演示数据 · 通过本地启动器打开可连接深大优课');
+          return;
+        }
+        if (state.authRequired) {
+          setText(els.footerSource, '尚未连接深大优课 · 登录信息只保存在本机');
+          return;
+        }
+        if (state.loading && !state.hasLoaded) {
+          setText(els.footerSource, '正在自动登录深大优课…');
+          return;
+        }
+        if (state.error) {
+          setText(els.footerSource, '深大优课同步失败 · 当前显示上次同步的数据');
+          return;
+        }
+        setText(els.footerSource, '数据来自深大优课 · 完成状态仅保存在本机');
+      }
+
+      function updateStats(items) {
+        if (!state.hasLoaded) {
+          ['statTotal', 'statUrgent', 'statNear', 'statOverdue'].forEach((key) => {
+            setText(els[key], '—');
+          });
+          [els.statCardTotal, els.statCardUrgent, els.statCardNear, els.statCardOverdue].forEach((card) => {
+            card.classList.remove('is-zero');
+          });
+          return;
+        }
+
+        const counts = getCounts(items);
+        bumpValue(els.statTotal, counts.total);
+        bumpValue(els.statUrgent, counts.urgent);
+        bumpValue(els.statNear, counts.near);
+        bumpValue(els.statOverdue, counts.overdue);
+
+        els.statCardTotal.classList.toggle('is-zero', counts.total === 0);
+        els.statCardUrgent.classList.toggle('is-zero', counts.urgent === 0);
+        els.statCardNear.classList.toggle('is-zero', counts.near === 0);
+        els.statCardOverdue.classList.toggle('is-zero', counts.overdue === 0);
+      }
+
+      function updateFocusCard(items) {
+        if (state.authRequired && !state.hasLoaded) {
+          els.focusCard.dataset.level = 'normal';
+          els.focusBadge.dataset.level = 'normal';
+          setText(els.focusBadge, '待登录');
+          setText(els.focusCourse, 'SZU LMS / 深大优课');
+          setText(els.focusName, '登录后，自动把最紧急的作业放到这里。');
+          setText(els.focusTimeLabel, '当前状态');
+          setText(els.focusCountdown, '未连接');
+          return;
+        }
+
+        const { overdue, upcoming } = splitGroups(items);
+        const focus = overdue[0] || upcoming[0] || null;
+
+        if (!focus) {
+          els.focusCard.dataset.level = 'normal';
+          els.focusBadge.dataset.level = 'normal';
+          setText(els.focusBadge, '已清空');
+          setText(els.focusCourse, 'NO URGENT TASKS');
+          setText(els.focusName, '清单已经清空，去享受一点空白吧。');
+          setText(els.focusTimeLabel, '当前状态');
+          setText(els.focusCountdown, '全部完成');
+          return;
+        }
+
+        const level = focus.meta.level;
+        els.focusCard.dataset.level = level;
+        els.focusBadge.dataset.level = level;
+        setText(els.focusBadge, focus.meta.label || '待完成');
+        setText(els.focusCourse, focus.course);
+        setText(els.focusName, focus.name);
+        els.focusName.title = focus.name;
+        setText(els.focusTimeLabel, level === 'overdue' ? '已超时' : '距离截止');
+        setText(els.focusCountdown, formatCountdown(focus.meta.remaining));
+      }
+
+      function renderSkeleton() {
+        const skeleton = `
+          <div class="skeleton-list" aria-hidden="true">
+            ${Array.from({ length: 4 }).map(() => `
+              <div class="skeleton-task">
+                <div class="skeleton-check"></div>
+                <div class="skeleton-lines">
+                  <div class="skeleton-line skeleton-line--short"></div>
+                  <div class="skeleton-line skeleton-line--title"></div>
+                  <div class="skeleton-line skeleton-line--meta"></div>
+                </div>
+                <div class="skeleton-side"></div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        els.taskList.innerHTML = skeleton;
+        els.taskList.setAttribute('aria-busy', 'true');
+        setText(els.boardCount, '读取中');
+      }
+
+      function renderStatusPill(level, label) {
+        if (!label) return '';
+        return `
+          <span class="status-pill status-pill--${level}">
+            <span class="status-dot" aria-hidden="true"></span>${escapeHtml(label)}
+          </span>
+        `;
+      }
+
+      function renderTask(item, index) {
+        const level = item.meta.level;
+        const due = new Date(item.dueDate);
+        const dueText = formatDueDate(due);
+        const countdown = formatCountdown(item.meta.remaining);
+        const note = item.notes
+          ? `<p class="task-note" title="${escapeHtml(item.notes)}"><span class="note-label">备注</span>${escapeHtml(item.notes)}</p>`
+          : '';
+        const typeChip = item.type
+          ? `<span class="type-chip">${escapeHtml(item.type)}</span>`
+          : '';
+
+        return `
+          <article class="task task--${level}" data-task-id="${escapeHtml(item.id)}" data-level="${level}" style="--task-index:${index}">
+            <div class="task-checkcell">
+              <button
+                class="task-check"
+                type="button"
+                role="checkbox"
+                aria-checked="false"
+                data-complete-id="${escapeHtml(item.id)}"
+                aria-label="标记「${escapeHtml(item.name)}」为已完成"
+                title="标记为已完成（仅本应用）"
+              >
+                <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>
+              </button>
+            </div>
+
+            <div class="task-main">
+              <div class="task-topline">
+                <span class="course-chip">${escapeHtml(item.course)}</span>
+                ${typeChip}
+                ${renderStatusPill(level, item.meta.label)}
+              </div>
+              <h3 class="task-title">${escapeHtml(item.name)}</h3>
+              ${note}
+              <div class="task-meta">
+                <span class="task-due" title="${escapeHtml(formatFullDate(due))}">
+                  <svg class="icon" aria-hidden="true"><use href="#i-calendar"></use></svg>
+                  <span>截止 <strong>${escapeHtml(dueText)}</strong></span>
+                </span>
+              </div>
+            </div>
+
+            <div class="task-side">
+              <span class="countdown-label">${level === 'overdue' ? '已超时' : '剩余时间'}</span>
+              <strong class="countdown-value">${escapeHtml(countdown)}</strong>
+            </div>
+          </article>
+        `;
+      }
+
+      function renderGroupHead(kind, title, meta) {
+        const overdue = kind === 'overdue';
+        return `
+          <div class="group-head">
+            <span class="group-title${overdue ? ' group-title--overdue' : ''}">
+              <svg class="icon" aria-hidden="true"><use href="#${overdue ? 'i-alert' : 'i-flag'}"></use></svg>
+              ${escapeHtml(title)}
+            </span>
+            <span class="group-meta${overdue ? ' group-meta--overdue' : ''}">${escapeHtml(meta)}</span>
+          </div>
+        `;
+      }
+
+      function renderBoard(items) {
+        const showRefreshError = state.error && state.hasLoaded;
+        els.errorBanner.hidden = !showRefreshError;
+        if (showRefreshError) {
+          setText(els.errorMessage, state.error.message || '未知错误');
+        }
+
+        if (state.authRequired && !state.hasLoaded) {
+          els.taskList.setAttribute('aria-busy', 'false');
+          setText(els.boardCount, '未登录');
+          const detail =
+            state.auth.code === 'AUTH_FAILED' && state.auth.message
+              ? state.auth.message
+              : '首次登录后，账号会加密保存在本机；下次打开应用会自动登录并同步。';
+          els.taskList.innerHTML = `
+            <div class="state-card state-card--auth">
+              <div class="state-icon" aria-hidden="true"><svg class="icon"><use href="#i-lock"></use></svg></div>
+              <h3>登录深大优课，自动整理作业</h3>
+              <p>${escapeHtml(detail)}</p>
+              <button class="state-action" type="button" data-open-auth ${state.loading ? 'disabled' : ''}>
+                ${state.loading ? '正在连接…' : '登录并同步'}
+              </button>
+            </div>
+          `;
+          return;
+        }
+
+        if (state.loading && !state.hasLoaded) {
+          renderSkeleton();
+          return;
+        }
+
+        if (state.error && !state.hasLoaded) {
+          els.taskList.setAttribute('aria-busy', 'false');
+          setText(els.boardCount, '未连接');
+          els.taskList.innerHTML = `
+            <div class="state-card state-card--error">
+              <div class="state-icon" aria-hidden="true"><svg class="icon"><use href="#i-alert"></use></svg></div>
+              <h3>作业数据没有加载成功</h3>
+              <p>${escapeHtml(state.error.message || '请检查网络连接后重试。')}</p>
+              <button class="state-action" type="button" data-retry>再试一次</button>
+            </div>
+          `;
+          return;
+        }
+
+        if (!items.length) {
+          els.taskList.setAttribute('aria-busy', 'false');
+          setText(els.boardCount, '0 项');
+          els.taskList.innerHTML = `
+            <div class="state-card">
+              <div class="state-icon" aria-hidden="true"><svg class="icon"><use href="#i-check"></use></svg></div>
+              <h3>暂时没有待完成作业</h3>
+              <p>清单是空的。可以放心休息一下，或手动刷新看看有没有新任务。</p>
+              <button class="state-action" type="button" data-refresh>重新检查</button>
+            </div>
+          `;
+          return;
+        }
+
+        const { overdue, upcoming } = splitGroups(items);
+        let html = '';
+
+        if (overdue.length) {
+          html += `
+            <section class="group group--overdue" aria-label="已逾期作业">
+              ${renderGroupHead('overdue', '已逾期', `${overdue.length} 项 · 请优先处理`)}
+              <div class="task-list">
+                ${overdue.map((item, index) => renderTask(item, index)).join('')}
+              </div>
+            </section>
+          `;
+        }
+
+        if (upcoming.length) {
+          html += `
+            <section class="group" aria-label="待完成作业">
+              ${renderGroupHead('upcoming', overdue.length ? '接下来' : '待完成', '按截止时间从近到远')}
+              <div class="task-list">
+                ${upcoming.map((item, index) => renderTask(item, index + overdue.length)).join('')}
+              </div>
+            </section>
+          `;
+        }
+
+        html += `
+          <div class="completion-note">
+            <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+            <span>勾选完成只会从本应用移除，不会替你在深大优课中提交作业。</span>
+          </div>
+        `;
+
+        els.taskList.innerHTML = html;
+        els.taskList.setAttribute('aria-busy', 'false');
+        setText(els.boardCount, `${items.length} 项待办`);
+      }
+
+      function renderAll() {
+        updateTodayLabel();
+        const items = getVisibleItems();
+        updateAccountUI();
+        updateSourceUI();
+        updateRefreshUI();
+        updateFloatingUI();
+        updateLastUpdatedUI();
+        updateFooter();
+        updateStats(items);
+        updateFocusCard(items);
+        renderBoard(items);
+        state.renderedAt = Date.now();
+      }
+
+      /* ==========================================================
+         登录对话框
+         ========================================================== */
+      function setAuthError(message) {
+        const text = String(message || '').trim();
+        els.authError.hidden = !text;
+        setText(els.authError, text);
+      }
+
+      function setCaptcha(payload) {
+        const type = payload && payload.captchaType;
+        const image = payload && payload.captchaImage;
+        if (type === 'image') {
+          els.captchaField.hidden = false;
+          if (image) {
+            els.captchaImage.src = image;
+            els.captchaImage.alt = '学校登录页验证码';
+          }
+          return;
+        }
+        els.captchaField.hidden = true;
+        els.authCaptcha.value = '';
+      }
+
+      function setAuthBusy(busy) {
+        state.loginPending = busy;
+        els.authSubmit.disabled = busy;
+        els.authSubmit.classList.toggle('is-loading', busy);
+        setText(els.authSubmitLabel, busy ? '正在登录…' : '登录并同步');
+      }
+
+      function updateAuthDialogContent(problem = {}) {
+        const status = state.auth.status || {};
+        const username =
+          (state.auth.user && state.auth.user.username) ||
+          status.username ||
+          '';
+        const connected = isConnected();
+        const configured = Boolean(status.configured || status.authenticated || connected);
+
+        if (username && !els.authUsername.value) {
+          els.authUsername.value = username;
+        }
+
+        els.authCurrent.hidden = !(connected || configured);
+        if (connected) {
+          setText(els.authCurrent, `当前已连接：${username || '深大优课'}（登录状态仅保存在本机）`);
+        } else if (configured) {
+          setText(els.authCurrent, '本机已保存登录信息，可直接重新登录。');
+        }
+
+        els.authLogout.hidden = !configured;
+        els.authLogout.textContent = '退出并清除登录信息';
+
+        if (problem.code === 'CAPTCHA_REQUIRED') {
+          setCaptcha(problem.payload || {});
+          setAuthError(problem.message || '请输入验证码后继续。');
+        } else if (problem.code === 'AUTH_REQUIRED') {
+          setAuthError('');
+        } else if (problem.message) {
+          setAuthError(problem.message);
+        } else if (status.lastError) {
+          setAuthError(`上次登录未完成：${status.lastError}`);
+        } else {
+          setAuthError('');
+        }
+      }
+
+      async function openAuthDialog(problem = {}) {
+        if (IS_MOCK) {
+          showToast('当前是演示模式。请通过“作业备忘”快捷方式启动本地服务后再登录。');
+          return;
+        }
+
+        if (els.authDialog.open) {
+          updateAuthDialogContent(problem);
+          return;
+        }
+
+        try {
+          await fetchAuthStatus();
+        } catch {
+          // 状态读取失败不影响用户手动登录。
+        }
+        updateAccountUI();
+        updateAuthDialogContent(problem);
+        els.authDialog.showModal();
+
+        const shouldFocusCaptcha = problem.code === 'CAPTCHA_REQUIRED' && !els.captchaField.hidden;
+        if (shouldFocusCaptcha) {
+          els.authCaptcha.focus();
+        } else if (!els.authUsername.value) {
+          els.authUsername.focus();
+        } else {
+          els.authPassword.focus();
+        }
+      }
+
+      function closeAuthDialog() {
+        if (els.authDialog.open) els.authDialog.close();
+      }
+
+      async function handleLoginSubmit(event) {
+        event.preventDefault();
+        if (state.loginPending) return;
+
+        const username = els.authUsername.value.trim();
+        const password = els.authPassword.value;
+        const captcha = els.authCaptcha.value.trim();
+        const remember = els.authRemember.checked;
+
+        if (!username) {
+          setAuthError('请输入深大学号。');
+          els.authUsername.focus();
+          return;
+        }
+        if (!password) {
+          setAuthError('请输入统一身份认证密码。');
+          els.authPassword.focus();
+          return;
+        }
+        if (!els.captchaField.hidden && !captcha) {
+          setAuthError('请输入图片中的验证码。');
+          els.authCaptcha.focus();
+          return;
+        }
+
+        setAuthError('');
+        setAuthBusy(true);
+
+        try {
+          const result = await requestJSON('/api/login', {
+            method: 'POST',
+            body: JSON.stringify({ username, password, remember, captcha })
+          });
+
+          state.auth.status = result.status || null;
+          state.auth.user = result.user || { username };
+          state.authRequired = false;
+          state.auth.code = '';
+          state.auth.message = '';
+          state.hasLoaded = false;
+          state.assignments = [];
+          state.lastUpdated = null;
+          state.initialAuthPrompted = true;
+          closeAuthDialog();
+          resetAuthForm();
+          updateAccountUI();
+          renderAll();
+          showToast(
+            result.count
+              ? `登录成功，同步到 ${result.count} 项待完成作业`
+              : '登录成功，正在同步作业'
+          );
+          await loadAssignments({ manual: true, force: true });
+        } catch (error) {
+          if (error.code === 'CAPTCHA_REQUIRED') {
+            setCaptcha(error.payload || {});
+            setAuthError(error.message || '请输入验证码后继续。');
+            if (!els.captchaField.hidden) {
+              els.authCaptcha.focus();
+            }
+          } else {
+            if (error.payload && error.payload.status) {
+              state.auth.status = error.payload.status;
+              updateAccountUI();
+            }
+            setAuthError(error.message || '登录失败，请重试。');
+          }
+        } finally {
+          setAuthBusy(false);
+        }
+      }
+
+      function resetAuthForm() {
+        els.authPassword.value = '';
+        els.authCaptcha.value = '';
+        els.captchaField.hidden = true;
+        els.captchaImage.removeAttribute('src');
+        setAuthError('');
+        els.authPassword.type = 'password';
+        setText(els.passwordToggle, '显示');
+        els.passwordToggle.setAttribute('aria-label', '显示密码');
+      }
+
+      async function handleLogout() {
+        if (!window.confirm('退出并清除本机保存的登录信息？之后需要重新登录。')) {
+          return;
+        }
+        try {
+          const result = await requestJSON('/api/logout', {
+            method: 'POST',
+            body: JSON.stringify({ forget: true })
+          });
+          state.auth.status = result.status || null;
+          state.auth.user = null;
+          state.auth.code = 'AUTH_REQUIRED';
+          state.auth.message = '已退出登录。';
+          state.authRequired = true;
+          state.assignments = [];
+          state.completedIds.clear();
+          state.hasLoaded = false;
+          state.lastUpdated = null;
+          state.error = null;
+          closeAuthDialog();
+          resetAuthForm();
+          renderAll();
+          showToast('已退出登录，本机登录信息已清除');
+        } catch (error) {
+          setAuthError(error.message || '退出失败，请稍后重试。');
+        }
+      }
+
+      /* ==========================================================
+         取数 / 刷新 / 完成
+         ========================================================== */
+      async function loadAssignments({ manual = false, initial = false, force = false, fromPeer = false } = {}) {
+        if (state.loading) return;
+
+        state.loading = true;
+        state.error = null;
+        renderAll();
+
+        let authProblem = null;
+
+        try {
+          const payload = await fetchHomeworkList({ force });
+          state.assignments = payload.assignments;
+          state.hasLoaded = true;
+          state.authRequired = false;
+          state.auth.code = '';
+          state.auth.message = '';
+          state.auth.captchaType = '';
+          state.auth.captchaImage = '';
+          state.auth.status = payload.status || state.auth.status;
+          if (payload.user) state.auth.user = payload.user;
+          state.lastUpdated = payload.updatedAt || new Date();
+          state.error = null;
+          renderAll();
+
+          if (!fromPeer) broadcastDataChanged();
+
+          if (manual) {
+            const count = getVisibleItems().length;
+            showToast(`已刷新，共 ${count} 项待完成作业`);
+          }
+        } catch (error) {
+          console.error('[作业备忘] 加载失败：', error);
+
+          if (['AUTH_REQUIRED', 'AUTH_FAILED', 'CAPTCHA_REQUIRED'].includes(error.code)) {
+            state.authRequired = true;
+            state.auth.code = error.code;
+            state.auth.message = error.message || '';
+            state.auth.status = (error.payload && error.payload.status) || state.auth.status;
+            state.auth.captchaType = (error.payload && error.payload.captchaType) || '';
+            state.auth.captchaImage = (error.payload && error.payload.captchaImage) || '';
+            if (!state.hasLoaded) state.assignments = [];
+            state.error = null;
+            authProblem = {
+              code: error.code,
+              message: error.message,
+              payload: error.payload || {}
+            };
+          } else {
+            state.error = error instanceof Error ? error : new Error(String(error));
+            if (!state.hasLoaded) state.assignments = [];
+            if (manual || initial) {
+              showToast(state.error.message || '作业数据加载失败', 'error');
+            }
+          }
+          renderAll();
+        } finally {
+          state.loading = false;
+          renderAll();
+        }
+
+        const shouldPrompt =
+          authProblem &&
+          !fromPeer &&
+          (initial || manual || !state.initialAuthPrompted) &&
+          !els.authDialog.open;
+
+        if (shouldPrompt) {
+          state.initialAuthPrompted = true;
+          openAuthDialog(authProblem);
+        }
+      }
+
+      async function handleComplete(id, button) {
+        if (state.pendingCompletions.has(id)) return;
+
+        const item = state.assignments.find((entry) => entry.id === id);
+        if (!item) return;
+
+        state.pendingCompletions.add(id);
+        button.disabled = true;
+        button.classList.add('is-saving');
+        button.setAttribute('aria-label', `正在完成「${item.name}」`);
+        button.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-refresh"></use></svg>';
+
+        try {
+          await markHomeworkCompleted(id, item.name);
+          state.completedIds.add(id);
+
+          const card = button.closest('.task');
+          if (card) card.classList.add('is-removing');
+
+          const currentItems = getVisibleItems();
+          updateStats(currentItems);
+          updateFocusCard(currentItems);
+          broadcastDataChanged();
+          showToast(`已完成「${item.name}」· 仅从本应用移除`);
+          setText(els.boardCount, `${currentItems.length} 项待办`);
+
+          setTimeout(() => {
+            if (!state.loading) {
+              renderBoard(getVisibleItems());
+              state.renderedAt = Date.now();
+            }
+          }, 300);
+        } catch (error) {
+          console.error('[作业备忘] 标记完成失败：', error);
+          showToast(error.message || '标记完成失败，请重试', 'error');
+          button.disabled = false;
+          button.classList.remove('is-saving');
+          button.setAttribute('aria-label', `标记「${item.name}」为已完成`);
+          button.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>';
+        } finally {
+          state.pendingCompletions.delete(id);
+        }
+      }
+
+      /* ==========================================================
+         提示 / 事件
+         ========================================================== */
+      function showToast(message, type = 'success') {
+        clearTimeout(state.toastTimer);
+        setText(els.toastMessage, message);
+        els.toast.classList.toggle('toast--error', type === 'error');
+        const icon = els.toast.querySelector('.toast-icon use');
+        if (icon) icon.setAttribute('href', type === 'error' ? '#i-alert' : '#i-check');
+        els.toast.classList.add('is-visible');
+        state.toastTimer = setTimeout(() => {
+          els.toast.classList.remove('is-visible');
+        }, 3600);
+      }
+
+      function updateLiveView() {
+        if (document.hidden || state.loading || state.pendingCompletions.size > 0) return;
+        if (els.authDialog.open) return;
+        if (Date.now() - state.renderedAt < 28000) return;
+
+        const activeElement = document.activeElement;
+        if (activeElement && els.taskList.contains(activeElement)) return;
+
+        renderAll();
+      }
+
+      els.refreshBtn.addEventListener('click', () =>
+        loadAssignments({ manual: true, force: true })
+      );
+      els.retryBtn.addEventListener('click', () =>
+        loadAssignments({ manual: true, force: true })
+      );
+      els.floatToggle.addEventListener('click', toggleFloatingMode);
+
+      els.accountBtn.addEventListener('click', () => openAuthDialog());
+      els.authClose.addEventListener('click', closeAuthDialog);
+      els.authDialog.addEventListener('close', resetAuthForm);
+      els.authDialog.addEventListener('click', (event) => {
+        if (event.target === els.authDialog) closeAuthDialog();
+      });
+
+      els.authForm.addEventListener('submit', handleLoginSubmit);
+      els.authLogout.addEventListener('click', handleLogout);
+
+      els.passwordToggle.addEventListener('click', () => {
+        const showing = els.authPassword.type === 'text';
+        els.authPassword.type = showing ? 'password' : 'text';
+        setText(els.passwordToggle, showing ? '显示' : '隐藏');
+        els.passwordToggle.setAttribute(
+          'aria-label',
+          showing ? '显示密码' : '隐藏密码'
+        );
+      });
+
+      els.taskList.addEventListener('click', (event) => {
+        const completeButton = event.target.closest('[data-complete-id]');
+        if (completeButton) {
+          handleComplete(completeButton.dataset.completeId, completeButton);
+          return;
+        }
+
+        if (event.target.closest('[data-open-auth]')) {
+          openAuthDialog();
+          return;
+        }
+
+        if (event.target.closest('[data-retry]')) {
+          loadAssignments({ manual: true, force: true });
+          return;
+        }
+
+        if (event.target.closest('[data-refresh]')) {
+          loadAssignments({ manual: true, force: true });
+        }
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          updateTodayLabel();
+          updateLiveView();
+        }
+      });
+
+      window.addEventListener('pywebviewready', () => {
+        state.desktopBridgeReady = true;
+        updateFloatingUI();
+        syncFloatingStateFromDesktop();
+        if (!state.floatingStateTimer) {
+          state.floatingStateTimer = setInterval(syncFloatingStateFromDesktop, 1200);
+        }
+      });
+
+      document.addEventListener('click', (event) => {
+        const link = event.target.closest('a[href^="http"]');
+        const api = getDesktopApi();
+        if (!link || !api || typeof api.open_external !== 'function') return;
+        event.preventDefault();
+        api.open_external(link.href);
+      }, true);
+
+      if (syncChannel) {
+        syncChannel.addEventListener('message', (event) => {
+          if (!event.data || event.data.sender === WINDOW_ID) return;
+          if (event.data.type === 'data-changed') {
+            loadAssignments({ fromPeer: true });
+          } else if (event.data.type === 'open-login') {
+            openAuthDialog();
+          }
+        });
+      }
+
+      window.addEventListener('beforeunload', () => {
+        clearFloatingPopupTimer();
+        if (state.floatingStateTimer) {
+          clearInterval(state.floatingStateTimer);
+          state.floatingStateTimer = null;
+        }
+        if (state.floatingPopup && !state.floatingPopup.closed) {
+          state.floatingPopup.close();
+        }
+        if (syncChannel) syncChannel.close();
+      });
+
+      setInterval(updateLiveView, 30000);
+
+      window.HomeworkDesk = {
+        mode: IS_MOCK ? 'mock' : 'local',
+        fetchHomeworkList,
+        normalizeHomeworkList,
+        classifyHomework,
+        formatCountdown,
+        formatDueDate,
+        refresh: () => loadAssignments({ manual: true, force: true }),
+        openLogin: () => openAuthDialog(),
+        toggleFloating: toggleFloatingMode,
+        setFloatingState,
+        getState: () => ({
+          assignments: state.assignments,
+          completedIds: [...state.completedIds],
+          lastUpdated: state.lastUpdated,
+          auth: state.auth,
+          authRequired: state.authRequired,
+          floatingOpen: state.floatingOpen
+        })
+      };
+
+      (async function boot() {
+        if (IS_LOCAL_APP) {
+          await fetchAuthStatus();
+        }
+        updateAccountUI();
+        await loadAssignments({ initial: true });
+      })();
+    })();
+  </script>
+
+  <div class="win-resize-layer" aria-hidden="true">
+    <div data-resize="top"></div>
+    <div data-resize="bottom"></div>
+    <div data-resize="left"></div>
+    <div data-resize="right"></div>
+    <div data-resize="top-left"></div>
+    <div data-resize="top-right"></div>
+    <div data-resize="bottom-left"></div>
+    <div data-resize="bottom-right"></div>
+  </div>
+
+  <script>
+    /* 无边框窗口：自绘标题栏控制 + 四边缩放（仅在桌面版生效） */
+    (() => {
+      'use strict';
+
+      const TARGET = 'main';
+      const root = document.documentElement;
+      const DOUBLE_CLICK_MS = 400;
+      let lastDragDown = 0;
+
+      function desktopApi() {
+        return window.pywebview && window.pywebview.api ? window.pywebview.api : null;
+      }
+
+      function markDesktop() {
+        root.classList.add('is-desktop-app');
+      }
+
+      function syncMaximized(maximized) {
+        const value = Boolean(maximized);
+        root.dataset.windowMaximized = String(value);
+        document.querySelectorAll('[data-win-action="toggle-maximize"]').forEach((button) => {
+          const label = value ? '还原窗口' : '最大化窗口';
+          button.title = label;
+          button.setAttribute('aria-label', label);
+          button.setAttribute('aria-pressed', String(value));
+        });
+      }
+
+      async function refreshState() {
+        const api = desktopApi();
+        if (!api || typeof api.window_state !== 'function') return;
+        try {
+          const result = await api.window_state(TARGET);
+          if (result && typeof result.maximized === 'boolean') syncMaximized(result.maximized);
+        } catch {
+          /* 窗口销毁时忽略 */
+        }
+      }
+
+      async function runControl(action) {
+        const api = desktopApi();
+        if (!api || typeof api.window_control !== 'function') return;
+        try {
+          const result = await api.window_control(TARGET, action);
+          if (result && typeof result.maximized === 'boolean') syncMaximized(result.maximized);
+        } catch {
+          /* 窗口销毁时忽略 */
+        }
+      }
+
+      document.addEventListener('mousedown', (event) => {
+        const control = event.target.closest('[data-win-action]');
+        if (control) {
+          event.preventDefault();
+          event.stopPropagation();
+          runControl(control.dataset.winAction);
+          return;
+        }
+
+        const grip = event.target.closest('[data-resize]');
+        if (grip) {
+          event.preventDefault();
+          event.stopPropagation();
+          const api = desktopApi();
+          if (api && typeof api.window_resize === 'function') {
+            api.window_resize(TARGET, grip.dataset.resize);
+          }
+          return;
+        }
+
+        const region = event.target.closest('.pywebview-drag-region');
+        if (!region) return;
+        const now = Date.now();
+        if (now - lastDragDown < DOUBLE_CLICK_MS) {
+          event.preventDefault();
+          event.stopPropagation();
+          lastDragDown = 0;
+          runControl('toggle-maximize');
+        } else {
+          lastDragDown = now;
+        }
+      }, true);
+
+      if (window.pywebview) markDesktop();
+      window.addEventListener('pywebviewready', () => {
+        markDesktop();
+        refreshState();
+      });
+
+      setInterval(() => {
+        if (!document.hidden) refreshState();
+      }, 1500);
+
+      /* ---- 侧边隐形滚动条 ---- */
+      const scrollRail = document.createElement('div');
+      scrollRail.className = 'scroll-rail';
+      scrollRail.setAttribute('aria-hidden', 'true');
+      const scrollThumb = document.createElement('div');
+      scrollThumb.className = 'scroll-thumb';
+      scrollRail.appendChild(scrollThumb);
+      const scrollZone = document.createElement('div');
+      scrollZone.className = 'scroll-hover-zone';
+      document.body.appendChild(scrollRail);
+      document.body.appendChild(scrollZone);
+
+      const scrollRoot = document.documentElement;
+      let scrollHideTimer = 0;
+      let scrollHovering = false;
+      let scrollDragging = false;
+      let scrollRaf = 0;
+
+      const maxScrollTop = () => Math.max(0, scrollRoot.scrollHeight - window.innerHeight);
+      const currentScrollTop = () => window.scrollY || scrollRoot.scrollTop || 0;
+
+      function layoutScrollbar() {
+        const track = scrollRail.clientHeight;
+        const max = maxScrollTop();
+        if (max <= 1 || track <= 0) {
+          scrollRail.style.visibility = 'hidden';
+          scrollRail.classList.remove('is-visible');
+          return;
+        }
+        scrollRail.style.visibility = 'visible';
+        const thumbHeight = Math.max(
+          36,
+          Math.round((track * window.innerHeight) / scrollRoot.scrollHeight)
+        );
+        const top = Math.round((track - thumbHeight) * (currentScrollTop() / max));
+        scrollThumb.style.height = `${thumbHeight}px`;
+        scrollThumb.style.transform = `translateY(${top}px)`;
+      }
+
+      function revealScrollbar() {
+        scrollRail.classList.add('is-visible');
+        clearTimeout(scrollHideTimer);
+        scrollHideTimer = setTimeout(() => {
+          if (!scrollHovering && !scrollDragging) scrollRail.classList.remove('is-visible');
+        }, 1100);
+      }
+
+      window.addEventListener('scroll', () => {
+        if (scrollRaf) return;
+        scrollRaf = requestAnimationFrame(() => {
+          scrollRaf = 0;
+          layoutScrollbar();
+          revealScrollbar();
+        });
+      }, { passive: true });
+
+      window.addEventListener('resize', layoutScrollbar);
+
+      scrollZone.addEventListener('pointerenter', () => {
+        scrollHovering = true;
+        clearTimeout(scrollHideTimer);
+        layoutScrollbar();
+        scrollRail.classList.add('is-visible');
+      });
+
+      scrollZone.addEventListener('pointerleave', () => {
+        scrollHovering = false;
+        clearTimeout(scrollHideTimer);
+        scrollHideTimer = setTimeout(() => {
+          if (!scrollDragging) scrollRail.classList.remove('is-visible');
+        }, 380);
+      });
+
+      scrollThumb.addEventListener('pointerenter', () => {
+        scrollHovering = true;
+        clearTimeout(scrollHideTimer);
+      });
+
+      scrollThumb.addEventListener('pointerleave', () => {
+        scrollHovering = false;
+      });
+
+      scrollThumb.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        scrollDragging = true;
+        scrollThumb.setPointerCapture(event.pointerId);
+        const startY = event.clientY;
+        const startTop = currentScrollTop();
+        const ratio =
+          maxScrollTop() / Math.max(1, scrollRail.clientHeight - scrollThumb.offsetHeight);
+
+        function onMove(moveEvent) {
+          window.scrollTo(0, startTop + (moveEvent.clientY - startY) * ratio);
+        }
+
+        function onUp(upEvent) {
+          scrollDragging = false;
+          scrollThumb.removeEventListener('pointermove', onMove);
+          scrollThumb.removeEventListener('pointerup', onUp);
+          scrollThumb.removeEventListener('pointercancel', onUp);
+          if (scrollThumb.hasPointerCapture(upEvent.pointerId)) {
+            scrollThumb.releasePointerCapture(upEvent.pointerId);
+          }
+          revealScrollbar();
+        }
+
+        scrollThumb.addEventListener('pointermove', onMove);
+        scrollThumb.addEventListener('pointerup', onUp);
+        scrollThumb.addEventListener('pointercancel', onUp);
+        revealScrollbar();
+      });
+
+      layoutScrollbar();
+      window.addEventListener('load', layoutScrollbar);
+      setTimeout(layoutScrollbar, 400);
+      new ResizeObserver(layoutScrollbar).observe(document.body);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>作业备忘 · 悬浮窗</title>
+  <style>
+    :root {
+      --bg: #f4f1eb;
+      --surface: #fffdf9;
+      --ink: #202a24;
+      --ink-soft: #3a463f;
+      --muted: #7a8179;
+      --line: #e4dfd4;
+      --green: #2f5b4c;
+      --green-dark: #234438;
+      --green-soft: #e7efe9;
+      --red: #b52d3b;
+      --red-strong: #8d1f2c;
+      --red-soft: #fcecec;
+      --orange: #bd650d;
+      --orange-strong: #9d5308;
+      --orange-soft: #fff2df;
+      --font: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont,
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font);
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    button {
+      font: inherit;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:focus-visible {
+      outline: 2px solid rgba(255, 255, 255, 0.7);
+      outline-offset: 2px;
+    }
+
+    svg {
+      display: block;
+    }
+
+    .f-app {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100vh;
+      min-height: 280px;
+      background:
+        radial-gradient(circle at 100% 0%, rgba(225, 236, 219, 0.66), transparent 34%),
+        var(--bg);
+    }
+
+    /* ---------- 顶部 ---------- */
+    .f-head {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex: 0 0 auto;
+      padding: 12px 13px 11px;
+      color: #fff;
+      background:
+        radial-gradient(circle at 92% -30%, rgba(255, 255, 255, 0.18), transparent 42%),
+        linear-gradient(135deg, #315e4e 0%, #24463a 100%);
+      box-shadow: 0 4px 16px -12px rgba(29, 51, 41, 0.9);
+    }
+
+    .f-brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+    }
+
+    .f-logo {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      color: var(--green-dark);
+      background: #f7f1e2;
+      box-shadow: 0 4px 10px -6px rgba(0, 0, 0, 0.5);
+    }
+
+    .f-logo svg {
+      width: 17px;
+      height: 17px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .f-brand-copy {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      line-height: 1.25;
+    }
+
+    .f-brand-copy strong {
+      overflow: hidden;
+      font-size: 13.5px;
+      font-weight: 780;
+      letter-spacing: 0.01em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .f-brand-copy span {
+      color: rgba(255, 255, 255, 0.56);
+      font-size: 7.5px;
+      font-weight: 700;
+      letter-spacing: 0.17em;
+    }
+
+    .f-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+    }
+
+    .f-icon-btn,
+    .f-back-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 255, 0.86);
+      background: rgba(255, 255, 255, 0.09);
+      cursor: pointer;
+      transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+    }
+
+    .f-icon-btn {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: 8px;
+    }
+
+    .f-icon-btn svg {
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .f-icon-btn:hover,
+    .f-back-btn:hover {
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    .f-icon-btn.is-loading svg {
+      animation: spin 0.8s linear infinite;
+    }
+
+    .f-icon-btn:disabled {
+      cursor: wait;
+      opacity: 0.7;
+    }
+
+    .f-back-btn {
+      gap: 4px;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: 8px;
+      font-size: 9px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .f-back-btn svg {
+      width: 11px;
+      height: 11px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* ---------- 无边框窗口框 ---------- */
+    .f-drag-strip {
+      position: fixed;
+      top: 0;
+      right: 0;
+      left: 0;
+      z-index: 60;
+      height: 9px;
+    }
+
+    .f-head .f-brand {
+      flex: 1 1 auto;
+    }
+
+    .pywebview-drag-region {
+      cursor: default;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .f-icon-btn--close:hover {
+      color: #fff;
+      border-color: rgba(181, 45, 59, 0.5);
+      background: #b52d3b;
+    }
+
+    .f-resize-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      display: none;
+      pointer-events: none;
+    }
+
+    html.is-desktop-app .f-resize-layer {
+      display: block;
+    }
+
+    .f-resize-layer > div {
+      position: absolute;
+      pointer-events: auto;
+    }
+
+    .f-resize-layer [data-resize="top"],
+    .f-resize-layer [data-resize="bottom"] {
+      right: 9px;
+      left: 9px;
+      height: 4px;
+      cursor: ns-resize;
+    }
+
+    .f-resize-layer [data-resize="top"] {
+      top: 0;
+    }
+
+    .f-resize-layer [data-resize="bottom"] {
+      bottom: 0;
+    }
+
+    .f-resize-layer [data-resize="left"],
+    .f-resize-layer [data-resize="right"] {
+      top: 9px;
+      bottom: 9px;
+      width: 4px;
+      cursor: ew-resize;
+    }
+
+    .f-resize-layer [data-resize="left"] {
+      left: 0;
+    }
+
+    .f-resize-layer [data-resize="right"] {
+      right: 0;
+    }
+
+    .f-resize-layer [data-resize="top-left"],
+    .f-resize-layer [data-resize="top-right"],
+    .f-resize-layer [data-resize="bottom-left"],
+    .f-resize-layer [data-resize="bottom-right"] {
+      width: 12px;
+      height: 12px;
+    }
+
+    .f-resize-layer [data-resize="top-left"] {
+      top: 0;
+      left: 0;
+      cursor: nwse-resize;
+    }
+
+    .f-resize-layer [data-resize="top-right"] {
+      top: 0;
+      right: 0;
+      cursor: nesw-resize;
+    }
+
+    .f-resize-layer [data-resize="bottom-left"] {
+      bottom: 0;
+      left: 0;
+      cursor: nesw-resize;
+    }
+
+    .f-resize-layer [data-resize="bottom-right"] {
+      right: 0;
+      bottom: 0;
+      cursor: nwse-resize;
+    }
+
+    /* ---------- 统计 ---------- */
+    .f-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      flex: 0 0 auto;
+      margin: 10px 11px 4px;
+      padding: 8px 2px;
+      border: 1px solid #e5dfd4;
+      border-radius: 13px;
+      background: rgba(255, 253, 249, 0.88);
+      box-shadow: 0 5px 16px -18px rgba(50, 43, 30, 0.55);
+    }
+
+    .f-stat {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      min-width: 0;
+    }
+
+    .f-stat + .f-stat::before {
+      content: "";
+      position: absolute;
+      top: 7px;
+      bottom: 7px;
+      left: 0;
+      width: 1px;
+      background: #ece6db;
+    }
+
+    .f-stat strong {
+      color: var(--green);
+      font-size: 21px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.05em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .f-stat span {
+      margin-top: 2px;
+      color: #8a9189;
+      font-size: 8px;
+      font-weight: 650;
+      letter-spacing: 0.05em;
+    }
+
+    .f-stat--urgent strong {
+      color: var(--red);
+    }
+
+    .f-stat--overdue strong {
+      color: var(--red-strong);
+    }
+
+    .f-stat.is-zero strong {
+      color: #b8b2a5;
+    }
+
+    /* ---------- 列表 ---------- */
+    .f-list {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      padding: 3px 11px 5px;
+      scrollbar-width: none;
+    }
+
+    .f-list::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+
+    /* 悬浮窗的隐形滚动条 */
+    .f-scroll-rail {
+      position: fixed;
+      right: 1px;
+      z-index: 65;
+      width: 10px;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .f-scroll-thumb {
+      position: absolute;
+      top: 0;
+      /* 与主界面一致：让开右侧 4px 缩放热区。 */
+      right: 4px;
+      width: 5px;
+      min-height: 30px;
+      border-radius: 999px;
+      background: rgba(122, 129, 121, 0.5);
+      opacity: 0;
+      pointer-events: auto;
+      transition: opacity 220ms ease, background 160ms ease, width 160ms ease, right 160ms ease;
+    }
+
+    .f-scroll-rail.is-visible .f-scroll-thumb {
+      opacity: 1;
+    }
+
+    .f-scroll-thumb:hover {
+      right: 3px;
+      width: 7px;
+      background: rgba(47, 91, 76, 0.62);
+    }
+
+    .f-scroll-zone {
+      position: fixed;
+      right: 0;
+      z-index: 64;
+      width: 12px;
+    }
+
+    .f-group-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 5px 2px 5px;
+      color: #8d948c;
+      font-size: 8px;
+      font-weight: 750;
+      letter-spacing: 0.1em;
+    }
+
+    .f-group-label--overdue {
+      color: var(--red-strong);
+    }
+
+    .f-group-label span:last-child {
+      color: #a7aca4;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+    }
+
+    .f-task {
+      --bar: #bdc9bf;
+      display: grid;
+      grid-template-columns: 3px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: stretch;
+      margin-bottom: 6px;
+      padding: 8px 9px 8px 7px;
+      border: 1px solid #e7e1d6;
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72) inset;
+    }
+
+    .f-task-bar {
+      width: 3px;
+      min-height: 30px;
+      border-radius: 999px;
+      background: var(--bar);
+    }
+
+    .f-task-main {
+      min-width: 0;
+    }
+
+    .f-task-title {
+      display: block;
+      overflow: hidden;
+      color: #2a342e;
+      font-size: 11.5px;
+      font-weight: 700;
+      line-height: 1.4;
+      letter-spacing: -0.005em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .f-task-meta {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+      margin-top: 3px;
+      color: #92988f;
+      font-size: 8.5px;
+      line-height: 1.35;
+    }
+
+    .f-course {
+      overflow: hidden;
+      max-width: 58%;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .f-dot {
+      flex: 0 0 auto;
+      width: 2px;
+      height: 2px;
+      border-radius: 50%;
+      background: #b8b9b3;
+    }
+
+    .f-due {
+      flex: 0 1 auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .f-task-side {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 2px;
+      min-width: 57px;
+      padding-left: 2px;
+      text-align: right;
+    }
+
+    .f-level {
+      color: #9aa096;
+      font-size: 7.5px;
+      font-weight: 750;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+
+    .f-countdown {
+      color: #67726a;
+      font-size: 9.5px;
+      font-weight: 750;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .f-task--overdue {
+      --bar: var(--red-strong);
+      border-color: #ebd0cf;
+      background: linear-gradient(100deg, #fff4f2 0%, #fffaf7 78%);
+    }
+
+    .f-task--overdue .f-level,
+    .f-task--overdue .f-countdown {
+      color: var(--red-strong);
+    }
+
+    .f-task--urgent {
+      --bar: var(--red);
+      border-color: #efd8d4;
+      background: linear-gradient(100deg, #fff8f5 0%, #fffdfb 78%);
+    }
+
+    .f-task--urgent .f-level,
+    .f-task--urgent .f-countdown {
+      color: var(--red);
+    }
+
+    .f-task--near {
+      --bar: var(--orange);
+      border-color: #efe1c9;
+      background: linear-gradient(100deg, #fffbf2 0%, #fffdfb 78%);
+    }
+
+    .f-task--near .f-level,
+    .f-task--near .f-countdown {
+      color: var(--orange-strong);
+    }
+
+    .f-task--normal .f-level {
+      color: #a4aaa1;
+    }
+
+    /* ---------- 状态 ---------- */
+    .f-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      min-height: 150px;
+      padding: 20px 15px;
+      text-align: center;
+    }
+
+    .f-state-icon {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      margin-bottom: 10px;
+      border-radius: 12px;
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .f-state-icon svg {
+      width: 19px;
+      height: 19px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .f-state--error .f-state-icon,
+    .f-state--auth .f-state-icon {
+      color: var(--red-strong);
+      background: #fae7e6;
+    }
+
+    .f-state h2 {
+      margin: 0 0 4px;
+      font-size: 12.5px;
+      font-weight: 750;
+      letter-spacing: -0.01em;
+    }
+
+    .f-state p {
+      max-width: 245px;
+      margin: 0;
+      color: #858c84;
+      font-size: 9.5px;
+      line-height: 1.65;
+      overflow-wrap: anywhere;
+    }
+
+    .f-state button {
+      margin-top: 11px;
+      padding: 6px 11px;
+      border: 1px solid #cbd7cd;
+      border-radius: 8px;
+      color: var(--green-dark);
+      background: #f8fbf8;
+      font-size: 9px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .f-state button:hover {
+      background: #fff;
+    }
+
+    .f-skeleton {
+      display: grid;
+      gap: 6px;
+      padding: 7px 2px;
+    }
+
+    .f-skeleton-row {
+      position: relative;
+      height: 50px;
+      overflow: hidden;
+      border: 1px solid #e9e3d8;
+      border-radius: 10px;
+      background: #f1ece2;
+    }
+
+    .f-skeleton-row::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.62), transparent);
+      transform: translateX(-100%);
+      animation: shimmer 1.3s infinite;
+    }
+
+    /* ---------- 底部 ---------- */
+    .f-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex: 0 0 auto;
+      padding: 7px 13px 8px;
+      border-top: 1px solid #e7e1d6;
+      color: #9a9f97;
+      background: rgba(248, 245, 238, 0.92);
+      font-size: 8px;
+      line-height: 1.35;
+    }
+
+    .f-foot span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .f-foot span:last-child {
+      text-align: right;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes shimmer {
+      to {
+        transform: translateX(100%);
+      }
+    }
+
+    @media (max-width: 350px) {
+      .f-head {
+        padding-right: 9px;
+        padding-left: 9px;
+      }
+
+      .f-brand-copy span {
+        display: none;
+      }
+
+      .f-back-btn {
+        padding: 0 6px;
+      }
+
+      .f-summary {
+        margin-right: 8px;
+        margin-left: 8px;
+      }
+
+      .f-list {
+        padding-right: 8px;
+        padding-left: 8px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="f-drag-strip pywebview-drag-region" aria-hidden="true"></div>
+  <div class="f-app">
+    <header class="f-head">
+      <div class="f-brand pywebview-drag-region">
+        <span class="f-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7.5"></path></svg>
+        </span>
+        <span class="f-brand-copy">
+          <strong>作业备忘</strong>
+          <span>FLOATING DESK</span>
+        </span>
+      </div>
+      <div class="f-actions">
+        <button class="f-icon-btn" id="refreshBtn" type="button" aria-label="刷新作业" title="刷新">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 11a8 8 0 0 0-14.9-4"></path>
+            <path d="M4 4v5h5"></path>
+            <path d="M4 13a8 8 0 0 0 14.9 4"></path>
+            <path d="M20 20v-5h-5"></path>
+          </svg>
+        </button>
+        <button class="f-back-btn" id="backBtn" type="button" title="切换回完整界面">
+          完整界面
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l7 7-7 7"></path></svg>
+        </button>
+        <button class="f-icon-btn f-icon-btn--close" id="closeBtn" type="button" aria-label="收起悬浮窗" title="收起悬浮窗">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 7l10 10"></path>
+            <path d="M17 7L7 17"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="f-summary" aria-label="作业统计">
+      <div class="f-stat" id="statTotalWrap">
+        <strong id="statTotal">—</strong>
+        <span>待办</span>
+      </div>
+      <div class="f-stat f-stat--urgent" id="statUrgentWrap">
+        <strong id="statUrgent">—</strong>
+        <span>紧急</span>
+      </div>
+      <div class="f-stat f-stat--overdue" id="statOverdueWrap">
+        <strong id="statOverdue">—</strong>
+        <span>逾期</span>
+      </div>
+    </section>
+
+    <main class="f-list" id="taskList" aria-busy="true" aria-live="polite"></main>
+
+    <footer class="f-foot">
+      <span id="updatedAt">正在同步…</span>
+      <span id="footNote">—</span>
+    </footer>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const MINUTE = 60 * 1000;
+      const HOUR = 60 * MINUTE;
+      const DAY = 24 * HOUR;
+      const URGENT_LIMIT = 48 * HOUR;
+      const NEAR_LIMIT = 7 * DAY;
+      const WINDOW_ID = window.crypto && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `float-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const syncChannel = 'BroadcastChannel' in window
+        ? new BroadcastChannel('homework-desk')
+        : null;
+
+      const state = {
+        assignments: [],
+        loading: false,
+        hasLoaded: false,
+        error: null,
+        authRequired: false,
+        lastUpdated: null,
+        lastFetchAt: 0
+      };
+
+      const els = {
+        refreshBtn: document.getElementById('refreshBtn'),
+        backBtn: document.getElementById('backBtn'),
+        closeBtn: document.getElementById('closeBtn'),
+        taskList: document.getElementById('taskList'),
+        statTotal: document.getElementById('statTotal'),
+        statUrgent: document.getElementById('statUrgent'),
+        statOverdue: document.getElementById('statOverdue'),
+        statTotalWrap: document.getElementById('statTotalWrap'),
+        statUrgentWrap: document.getElementById('statUrgentWrap'),
+        statOverdueWrap: document.getElementById('statOverdueWrap'),
+        updatedAt: document.getElementById('updatedAt'),
+        footNote: document.getElementById('footNote')
+      };
+
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (character) => {
+          const entities = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+          };
+          return entities[character];
+        });
+      }
+
+      function parseDate(value) {
+        if (!value) return null;
+        const date = value instanceof Date ? value : new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+
+      function startOfDay(date) {
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      }
+
+      function pad(value) {
+        return String(value).padStart(2, '0');
+      }
+
+      function formatDueShort(date) {
+        const now = new Date();
+        const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        const delta = Math.round(
+          (startOfDay(date).getTime() - startOfDay(now).getTime()) / DAY
+        );
+        if (delta === 0) return `今天 ${time}`;
+        if (delta === 1) return `明天 ${time}`;
+        if (delta === -1) return `昨天 ${time}`;
+        return `${date.getMonth() + 1}/${date.getDate()} ${time}`;
+      }
+
+      function formatCountdownCompact(remaining) {
+        const absolute = Math.abs(remaining);
+        const totalMinutes = Math.max(0, Math.floor(absolute / MINUTE));
+        const days = Math.floor(totalMinutes / 1440);
+        const hours = Math.floor((totalMinutes % 1440) / 60);
+        const minutes = totalMinutes % 60;
+
+        let value;
+        if (days > 0) {
+          value = hours > 0 ? `${days}天${hours}时` : `${days}天`;
+        } else if (hours > 0) {
+          value = minutes > 0 ? `${hours}时${minutes}分` : `${hours}时`;
+        } else {
+          value = `${Math.max(1, minutes)}分`;
+        }
+
+        if (remaining <= 0) {
+          return absolute < MINUTE ? '刚刚逾期' : `逾期${value}`;
+        }
+        return `剩${value}`;
+      }
+
+      function classify(item, now = Date.now()) {
+        const due = new Date(item.dueDate).getTime();
+        const remaining = due - now;
+        if (remaining <= 0) return { level: 'overdue', label: '逾期', due, remaining };
+        if (remaining <= URGENT_LIMIT) return { level: 'urgent', label: '紧急', due, remaining };
+        if (remaining <= NEAR_LIMIT) return { level: 'near', label: '临近', due, remaining };
+        return { level: 'normal', label: '待办', due, remaining };
+      }
+
+      function getItems() {
+        const now = Date.now();
+        return state.assignments
+          .filter((item) => !item.completed)
+          .map((item) => ({ ...item, meta: classify(item, now) }))
+          .sort((a, b) => a.meta.due - b.meta.due);
+      }
+
+      function getCounts(items) {
+        return items.reduce(
+          (counts, item) => {
+            counts.total += 1;
+            if (item.meta.level === 'urgent') counts.urgent += 1;
+            if (item.meta.level === 'overdue') counts.overdue += 1;
+            return counts;
+          },
+          { total: 0, urgent: 0, overdue: 0 }
+        );
+      }
+
+      function renderSkeleton() {
+        els.taskList.innerHTML = `
+          <div class="f-skeleton" aria-hidden="true">
+            ${Array.from({ length: 4 }).map(() => '<div class="f-skeleton-row"></div>').join('')}
+          </div>
+        `;
+        els.taskList.setAttribute('aria-busy', 'true');
+      }
+
+      function renderTask(item) {
+        const level = item.meta.level;
+        const due = parseDate(item.dueDate);
+        const dueText = due ? formatDueShort(due) : '截止时间未知';
+        const title = item.name || item.title || '未命名作业';
+        const course = item.course || item.courseName || '深大优课';
+        const countdown = formatCountdownCompact(item.meta.remaining);
+        return `
+          <article class="f-task f-task--${level}">
+            <span class="f-task-bar" aria-hidden="true"></span>
+            <div class="f-task-main">
+              <span class="f-task-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+              <div class="f-task-meta">
+                <span class="f-course" title="${escapeHtml(course)}">${escapeHtml(course)}</span>
+                <span class="f-dot" aria-hidden="true"></span>
+                <span class="f-due">${escapeHtml(dueText)}</span>
+              </div>
+            </div>
+            <div class="f-task-side">
+              <span class="f-level">${escapeHtml(item.meta.label)}</span>
+              <strong class="f-countdown">${escapeHtml(countdown)}</strong>
+            </div>
+          </article>
+        `;
+      }
+
+      function renderState(kind, title, message, actionLabel, actionId) {
+        const icon = kind === 'done'
+          ? '<path d="M5 12.5l4.2 4.2L19 7.5"></path>'
+          : '<rect x="4.5" y="10" width="15" height="10.5" rx="3"></rect><path d="M8 10V7.2a4 4 0 0 1 8 0V10"></path>';
+        const action = actionLabel
+          ? `<button type="button" data-action="${escapeHtml(actionId || '')}">${escapeHtml(actionLabel)}</button>`
+          : '';
+        els.taskList.innerHTML = `
+          <div class="f-state f-state--${kind}">
+            <div class="f-state-icon" aria-hidden="true"><svg viewBox="0 0 24 24">${icon}</svg></div>
+            <h2>${escapeHtml(title)}</h2>
+            <p>${escapeHtml(message)}</p>
+            ${action}
+          </div>
+        `;
+      }
+
+      function updateFooter(total) {
+        if (state.authRequired) {
+          els.updatedAt.textContent = '尚未登录';
+          els.footNote.textContent = '登录后自动同步';
+          return;
+        }
+        if (state.error && !state.hasLoaded) {
+          els.updatedAt.textContent = '同步失败';
+          els.footNote.textContent = '点击刷新重试';
+          return;
+        }
+        if (state.lastUpdated) {
+          const now = new Date();
+          const sameYear = state.lastUpdated.getFullYear() === now.getFullYear();
+          const prefix = sameYear ? '' : `${state.lastUpdated.getFullYear()}年`;
+          els.updatedAt.textContent =
+            `更新 ${prefix}${state.lastUpdated.getMonth() + 1}月${state.lastUpdated.getDate()}日 ` +
+            `${pad(state.lastUpdated.getHours())}:${pad(state.lastUpdated.getMinutes())}`;
+        } else {
+          els.updatedAt.textContent = state.loading ? '正在同步…' : '—';
+        }
+        if (state.error && state.hasLoaded) {
+          els.footNote.textContent = '同步失败，显示上次数据';
+        } else {
+          els.footNote.textContent = `${total} 项待办`;
+        }
+      }
+
+      function render() {
+        const items = getItems();
+        const counts = getCounts(items);
+        els.statTotal.textContent = state.hasLoaded ? String(counts.total) : '—';
+        els.statUrgent.textContent = state.hasLoaded ? String(counts.urgent) : '—';
+        els.statOverdue.textContent = state.hasLoaded ? String(counts.overdue) : '—';
+        els.statTotalWrap.classList.toggle('is-zero', state.hasLoaded && counts.total === 0);
+        els.statUrgentWrap.classList.toggle('is-zero', state.hasLoaded && counts.urgent === 0);
+        els.statOverdueWrap.classList.toggle('is-zero', state.hasLoaded && counts.overdue === 0);
+        els.refreshBtn.disabled = state.loading;
+        els.refreshBtn.classList.toggle('is-loading', state.loading);
+        updateFooter(counts.total);
+
+        if (state.loading && !state.hasLoaded) {
+          renderSkeleton();
+          return;
+        }
+
+        if (state.authRequired && !state.hasLoaded) {
+          renderState(
+            'auth',
+            '请先登录深大优课',
+            '在完整界面登录一次后，这里会自动显示待办作业。',
+            '打开完整界面',
+            'back-login'
+          );
+          els.taskList.setAttribute('aria-busy', 'false');
+          return;
+        }
+
+        if (state.error && !state.hasLoaded) {
+          renderState(
+            'error',
+            '作业没有同步成功',
+            state.error.message || '请检查网络后重试。',
+            '重新同步',
+            'refresh'
+          );
+          els.taskList.setAttribute('aria-busy', 'false');
+          return;
+        }
+
+        if (!items.length) {
+          renderState(
+            'done',
+            '没有待完成作业',
+            '清单是空的，去享受一点空白吧。',
+            '',
+            ''
+          );
+          els.taskList.setAttribute('aria-busy', 'false');
+          return;
+        }
+
+        const overdue = items.filter((item) => item.meta.level === 'overdue');
+        const upcoming = items.filter((item) => item.meta.level !== 'overdue');
+        let html = '';
+
+        if (overdue.length) {
+          html += `
+            <div class="f-group-label f-group-label--overdue">
+              <span>已逾期</span><span>${overdue.length} 项</span>
+            </div>
+            ${overdue.map(renderTask).join('')}
+          `;
+        }
+
+        if (upcoming.length) {
+          html += `
+            <div class="f-group-label">
+              <span>接下来</span><span>按截止时间</span>
+            </div>
+            ${upcoming.map(renderTask).join('')}
+          `;
+        }
+
+        els.taskList.innerHTML = html;
+        els.taskList.setAttribute('aria-busy', 'false');
+      }
+
+      async function requestJSON(path) {
+        const response = await fetch(path, {
+          headers: { Accept: 'application/json' },
+          cache: 'no-store'
+        });
+        const text = await response.text();
+        let payload = {};
+        if (text) {
+          try {
+            payload = JSON.parse(text);
+          } catch {
+            payload = { message: text.slice(0, 200) };
+          }
+        }
+        if (!response.ok) {
+          const error = new Error(payload.message || `HTTP ${response.status}`);
+          error.code = payload.code || `HTTP_${response.status}`;
+          error.payload = payload;
+          throw error;
+        }
+        return payload;
+      }
+
+      function broadcastDataChanged() {
+        if (syncChannel) {
+          syncChannel.postMessage({ type: 'data-changed', sender: WINDOW_ID });
+        }
+      }
+
+      async function load({ force = false, fromPeer = false } = {}) {
+        if (state.loading) return;
+        state.loading = true;
+        els.refreshBtn.disabled = true;
+        els.refreshBtn.classList.add('is-loading');
+        if (!state.hasLoaded) render();
+
+        try {
+          const payload = await requestJSON(`/api/homework${force ? '?refresh=1' : ''}`);
+          state.assignments = Array.isArray(payload.assignments) ? payload.assignments : [];
+          state.lastUpdated = payload.updatedAt ? new Date(payload.updatedAt) : new Date();
+          state.lastFetchAt = Date.now();
+          state.hasLoaded = true;
+          state.authRequired = false;
+          state.error = null;
+          render();
+          if (!fromPeer) broadcastDataChanged();
+        } catch (error) {
+          console.warn('[作业备忘悬浮窗] 加载失败：', error);
+          if (['AUTH_REQUIRED', 'AUTH_FAILED', 'CAPTCHA_REQUIRED'].includes(error.code)) {
+            state.authRequired = true;
+            state.error = null;
+            if (!state.hasLoaded) state.assignments = [];
+          } else {
+            state.error = error;
+            if (!state.hasLoaded) state.assignments = [];
+          }
+          render();
+        } finally {
+          state.loading = false;
+          els.refreshBtn.disabled = false;
+          els.refreshBtn.classList.remove('is-loading');
+          render();
+        }
+      }
+
+      function desktopApi() {
+        return window.pywebview && window.pywebview.api ? window.pywebview.api : null;
+      }
+
+      async function openFullInterface(openLogin = false) {
+        if (openLogin && syncChannel) {
+          syncChannel.postMessage({ type: 'open-login', sender: WINDOW_ID });
+        }
+
+        const api = desktopApi();
+        if (api) {
+          try {
+            if (typeof api.show_main === 'function') {
+              await api.show_main();
+            }
+            return;
+          } catch (error) {
+            console.warn('无法调用桌面窗口接口：', error);
+          }
+        }
+
+        if (window.opener && !window.opener.closed) {
+          try {
+            window.opener.HomeworkDesk?.setFloatingState?.(false);
+            if (openLogin) window.opener.HomeworkDesk?.openLogin?.();
+            window.opener.focus();
+          } catch (error) {
+            console.warn(error);
+          }
+        }
+        window.close();
+      }
+
+      els.refreshBtn.addEventListener('click', () => load({ force: true }));
+      els.backBtn.addEventListener('click', () => openFullInterface(false));
+      els.closeBtn.addEventListener('click', () => openFullInterface(false));
+
+      els.taskList.addEventListener('click', (event) => {
+        const action = event.target.closest('[data-action]');
+        if (!action) return;
+        if (action.dataset.action === 'refresh') {
+          load({ force: true });
+        } else if (action.dataset.action === 'back-login') {
+          openFullInterface(true);
+        }
+      });
+
+      if (syncChannel) {
+        syncChannel.addEventListener('message', (event) => {
+          if (!event.data || event.data.sender === WINDOW_ID) return;
+          if (event.data.type === 'data-changed' || event.data.type === 'float-opened') {
+            load({ fromPeer: true });
+          }
+        });
+      }
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          render();
+          if (state.hasLoaded && Date.now() - state.lastFetchAt > 10000) {
+            load({ fromPeer: true });
+          }
+        }
+      });
+
+      window.addEventListener('focus', () => {
+        if (state.hasLoaded && Date.now() - state.lastFetchAt > 10000) {
+          load({ fromPeer: true });
+        }
+      });
+
+      window.addEventListener('beforeunload', () => {
+        if (syncChannel) syncChannel.close();
+      });
+
+      setInterval(() => {
+        if (document.hidden) return;
+        render();
+        if (state.hasLoaded && Date.now() - state.lastFetchAt > 60000) {
+          load({ fromPeer: true });
+        }
+      }, 30000);
+
+      window.FloatingDesk = {
+        refresh: () => load({ force: true }),
+        onShown: () => {
+          if (!state.hasLoaded || Date.now() - state.lastFetchAt > 30000) {
+            load({ fromPeer: false });
+          } else {
+            render();
+          }
+        }
+      };
+
+      load();
+    })();
+  </script>
+
+  <div class="f-resize-layer" aria-hidden="true">
+    <div data-resize="top"></div>
+    <div data-resize="bottom"></div>
+    <div data-resize="left"></div>
+    <div data-resize="right"></div>
+    <div data-resize="top-left"></div>
+    <div data-resize="top-right"></div>
+    <div data-resize="bottom-left"></div>
+    <div data-resize="bottom-right"></div>
+  </div>
+
+  <script>
+    /* 无边框悬浮窗：标记桌面环境并接管四边缩放 */
+    (() => {
+      'use strict';
+
+      const root = document.documentElement;
+
+      function desktopApi() {
+        return window.pywebview && window.pywebview.api ? window.pywebview.api : null;
+      }
+
+      function markDesktop() {
+        root.classList.add('is-desktop-app');
+      }
+
+      if (window.pywebview) markDesktop();
+      window.addEventListener('pywebviewready', markDesktop);
+
+      document.addEventListener('mousedown', (event) => {
+        const grip = event.target.closest('[data-resize]');
+        if (!grip) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const api = desktopApi();
+        if (api && typeof api.window_resize === 'function') {
+          api.window_resize('float', grip.dataset.resize);
+        }
+      }, true);
+
+      /* ---- 列表隐形滚动条 ---- */
+      const list = document.getElementById('taskList');
+      const rail = document.createElement('div');
+      rail.className = 'f-scroll-rail';
+      rail.setAttribute('aria-hidden', 'true');
+      const thumb = document.createElement('div');
+      thumb.className = 'f-scroll-thumb';
+      rail.appendChild(thumb);
+      const zone = document.createElement('div');
+      zone.className = 'f-scroll-zone';
+      document.body.appendChild(rail);
+      document.body.appendChild(zone);
+
+      let hideTimer = 0;
+      let hovering = false;
+      let dragging = false;
+      let raf = 0;
+
+      function layoutScrollbar() {
+        const rect = list.getBoundingClientRect();
+        rail.style.top = `${Math.round(rect.top + 3)}px`;
+        rail.style.bottom = `${Math.round(window.innerHeight - rect.bottom + 4)}px`;
+        zone.style.top = `${Math.round(rect.top)}px`;
+        zone.style.bottom = `${Math.round(window.innerHeight - rect.bottom)}px`;
+
+        const max = list.scrollHeight - list.clientHeight;
+        const track = rail.clientHeight;
+        if (max <= 1 || track <= 0) {
+          rail.style.visibility = 'hidden';
+          rail.classList.remove('is-visible');
+          return;
+        }
+        rail.style.visibility = 'visible';
+        const thumbHeight = Math.max(
+          30,
+          Math.round((track * list.clientHeight) / list.scrollHeight)
+        );
+        const top = Math.round((track - thumbHeight) * (list.scrollTop / max));
+        thumb.style.height = `${thumbHeight}px`;
+        thumb.style.transform = `translateY(${top}px)`;
+      }
+
+      function revealScrollbar() {
+        rail.classList.add('is-visible');
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          if (!hovering && !dragging) rail.classList.remove('is-visible');
+        }, 1000);
+      }
+
+      list.addEventListener('scroll', () => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          layoutScrollbar();
+          revealScrollbar();
+        });
+      }, { passive: true });
+
+      window.addEventListener('resize', layoutScrollbar);
+
+      zone.addEventListener('pointerenter', () => {
+        hovering = true;
+        clearTimeout(hideTimer);
+        layoutScrollbar();
+        rail.classList.add('is-visible');
+      });
+
+      zone.addEventListener('pointerleave', () => {
+        hovering = false;
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          if (!dragging) rail.classList.remove('is-visible');
+        }, 350);
+      });
+
+      thumb.addEventListener('pointerenter', () => {
+        hovering = true;
+        clearTimeout(hideTimer);
+      });
+
+      thumb.addEventListener('pointerleave', () => {
+        hovering = false;
+      });
+
+      thumb.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        dragging = true;
+        thumb.setPointerCapture(event.pointerId);
+        const startY = event.clientY;
+        const startTop = list.scrollTop;
+        const ratio =
+          (list.scrollHeight - list.clientHeight) /
+          Math.max(1, rail.clientHeight - thumb.offsetHeight);
+
+        function onMove(moveEvent) {
+          list.scrollTop = startTop + (moveEvent.clientY - startY) * ratio;
+        }
+
+        function onUp(upEvent) {
+          dragging = false;
+          thumb.removeEventListener('pointermove', onMove);
+          thumb.removeEventListener('pointerup', onUp);
+          thumb.removeEventListener('pointercancel', onUp);
+          if (thumb.hasPointerCapture(upEvent.pointerId)) {
+            thumb.releasePointerCapture(upEvent.pointerId);
+          }
+          revealScrollbar();
+        }
+
+        thumb.addEventListener('pointermove', onMove);
+        thumb.addEventListener('pointerup', onUp);
+        thumb.addEventListener('pointercancel', onUp);
+        revealScrollbar();
+      });
+
+      layoutScrollbar();
+      window.addEventListener('load', layoutScrollbar);
+      setTimeout(layoutScrollbar, 400);
+      new ResizeObserver(layoutScrollbar).observe(list);
+    })();
+  </script>
+</body>
+</html>

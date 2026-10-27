@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# PyInstaller
+build/
+dist/
+*.manifest
+
+# Inno Setup build output (release/ is intentionally kept)
+dist_installer/
+
+# Local runtime data / secrets
+data/
+*.log
+credentials.dat
+session.dat
+prefs.json
+state.json
+*.tmp
+*.bak
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
