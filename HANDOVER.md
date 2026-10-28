@@ -1,7 +1,7 @@
 # 作业备忘 · 项目交接文档
 
 - 项目：作业备忘（Homework Desk）
-- 版本：1.1.0（含未发布的界面 / 托盘改动，版本号尚未提升）
+- 版本：1.2.0（2026-10-28：无边框窗口 / 托盘常驻 / 桌面悬浮球）
 - 文档更新：2026-10-27
 - 形态：Windows 桌面应用（Python + pywebview/WebView2）
 - 数据源：深圳大学优课（TronClass）`https://lms.szu.edu.cn/api/todos`
@@ -14,7 +14,7 @@
 
 ## 1. 项目概览
 
-程序提供一个正常的桌面主界面和一个可置顶的小型悬浮窗：
+程序提供一个正常的桌面主界面和一个 80×80 的桌面悬浮球：
 
 1. 首次打开时，用户输入深大统一身份认证账号。
 2. 后端登录 `authserver.szu.edu.cn`，再完成 Keycloak/TronClass 的 SSO 流程。
@@ -23,6 +23,7 @@
 5. 用户可勾选完成；完成记录仅保存在本机。
 6. 登录凭据和登录 Cookie 用 Windows DPAPI 加密保存在本机。
 7. 应用可以通过 Windows 启动文件夹在登录时自动运行。
+8. 关闭主界面不退出程序：主窗隐藏、悬浮球出现在桌面，可拖拽、可点回主界面。
 
 ### 主要能力
 
@@ -31,19 +32,22 @@
 - 48 小时内红色“紧急”，7 天内橙色“临近”，7 天以上普通样式。
 - 统计：未完成、紧急、临近、逾期。
 - 手动刷新、最后更新时间、每 30 秒倒计时。
-- 完整界面 / 置顶悬浮窗切换。
-- 主界面和悬浮窗数据通过本地 API + BroadcastChannel 同步。
+- 主界面 ⇄ 悬浮球切换：关闭主界面即显示悬浮球，单击悬浮球回到主界面。
+- 悬浮球带未完成作业数字角标，逾期/紧急时变红并呼吸；可拖拽并把位置记在本机。
+- 主界面和悬浮球数据通过本地 API + BroadcastChannel 同步。
 - 加密凭据自动登录；会话失效时自动使用保存的凭据重新登录。
 - 安装程序、桌面/开始菜单快捷方式、开机自启动、卸载程序。
 
 ### 窗口形态（2026-10 改版）
 
-- 主窗口和悬浮窗都改为**无边框窗口**，顶部由网页自绘标题栏，不再是系统白条。
+- 主窗口改为**无边框窗口**，顶部由网页自绘标题栏，不再是系统白条。
 - 标题栏高 38px：左侧应用图标 + 标题，右侧最小化 / 最大化 / 关闭。
 - 保留系统原生的四边 / 四角缩放、Win11 圆角与描边；最大化贴合工作区，不遮挡任务栏。
 - 侧边滚动条为“隐形浮现”样式：滚动时出现，停止约 1 秒淡出，鼠标移到窗口右侧重新出现并变墨绿。
-- 关闭主窗口**不退出**，只收起到任务栏通知区域；托盘图标常驻，可重新打开、切换悬浮窗或真正退出。
+- 关闭主窗口**不退出**：主窗隐藏、桌面出现 80×80 透明悬浮球（置顶、不进任务栏、不抢焦点），
+  托盘图标同时常驻，三个入口都能重新打开主界面。
 - 再次启动 EXE 会唤回已收起的窗口，不会重复起进程。
+- 1.1.0 那个 380×500 的悬浮窗（`floating.html`）已被悬浮球取代：程序不再加载、也不打包它。
 
 ---
 
@@ -53,10 +57,10 @@
 ┌─────────────────────────────────────────────────────────┐
 │                    HomeworkDesk.exe                     │
 │                                                         │
-│  主窗口 (WebView2)            悬浮窗 (WebView2)          │
-│  homework-reminder.html       floating.html              │
+│  主窗口 (WebView2)          悬浮球 (原生分层窗口)         │
+│  homework-reminder.html     ball_window.py · GDI+ 自绘    │
 │          │                         │                     │
-│          └──── BroadcastChannel ───┘                     │
+│          │  同一进程，直接调用 Python 对象                │
 │          │                                               │
 │          │ 本机 HTTP API（127.0.0.1 随机端口）             │
 │          ▼                                               │
@@ -77,11 +81,11 @@
 - 登录过程需要跨多个域（`authserver.szu.edu.cn` → `identity.szu.edu.cn` → `lms.szu.edu.cn`）维护 Cookie，
   浏览器页面本身无法安全地直接完成这套流程。
 - Python 后端负责 Cookie、DPAPI、CAS 登录和同源代理，前端只访问本机 API，不需要处理跨域。
-- 桌面窗口由 pywebview 创建，不经过外部浏览器，悬浮窗是独立的置顶原生窗口。
+- 主窗口由 pywebview 创建，不经过外部浏览器；悬浮球是**原生分层窗口**（不走 WebView2，见 3.2 悬浮球窗口）。
 
 ### 窗口外壳：无边框 + 托盘
 
-相关代码全在 `desktop_app.py`，前端配合在 `homework-reminder.html` / `floating.html`。
+相关代码在 `desktop_app.py`（窗口外壳、托盘），主界面前端在 `homework-reminder.html`，悬浮球在 `ball_window.py`。
 
 **无边框窗口**
 
@@ -109,14 +113,72 @@
   调 `window.evaluate_js`（会死锁）。
 - 浏览器里打开这两个 HTML 时不会显示标题栏和缩放层，方便单独调样式。
 
+**悬浮球窗口（原生分层窗口，`ball_window.py`）**
+
+悬浮球**不是** WebView2 窗口。原因是 WebView2 在纯 HWND 宿主模式下没有逐像素透明：
+`transparent=True`、`TransparencyKey` 色键、给宿主窗口加 `WS_EX_LAYERED` 都试过，
+球外面始终会有一块方形底色（页面背景改洋红，整块方块就变洋红，证明确实是 WebView2 在画底）。
+所以改用原生分层窗口自己画：
+
+```python
+CreateWindowExW(
+    WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE,
+    class_name, "", WS_POPUP, x, y, 80, 80, ...)
+```
+
+- 32bpp DIB + GDI+ 画圆球、阴影、文档图标、数字角标；
+  `Bitmap(w, h, stride, PixelFormat.Format32bppPArgb, bits_ptr)` 直接绑定 DIB 内存
+  （必须是 `PArgb`，用 `Argb` 会让 `AC_SRC_ALPHA` 的预乘算错，边缘出现黑边）。
+- `UpdateLayeredWindow(..., ULW_ALPHA)` 提交位图，圆外 alpha=0 才是真透明。
+- `WS_EX_NOACTIVATE` + `WM_MOUSEACTIVATE` 返回 `MA_NOACTIVATE`：点击球不抢前台焦点，
+  全屏游戏/视频不会被打断。
+- `WS_EX_TOOLWINDOW`：不进任务栏，也不出现在 Alt+Tab。
+- 分层窗口**不响应 `WM_PAINT` 绘制**，所以状态一变就调 `_render()` 重新
+  `UpdateLayeredWindow`；`WM_TIMER` 只在有紧急作业时重绘呼吸环。
+
+交互（都在 `_wndproc` 里）：
+
+| 消息 | 行为 |
+| --- | --- |
+| `WM_LBUTTONDOWN` | `_begin_drag()`：`SetCapture`，记下鼠标起点和窗口原点 |
+| `WM_MOUSEMOVE` | 位移超过 4px 才算拖拽；用**绝对位移**重算 `origin + delta`，不是累加增量 |
+| `WM_LBUTTONUP` | 拖过 → `move_to(..., notify=True)` 写 `ball-state.json`；没拖过 → 当单击，回主界面 |
+| `WM_RBUTTONUP` | 收起悬浮球 |
+| `WM_MOUSELEAVE` | `TrackMouseEvent(TME_LEAVE)` 配合，鼠标移出恢复常态 |
+
+位置由 `clamp_ball_position()` 夹回当前显示器工作区，越界/拔掉显示器时不会跑到看不见的地方。
+
+数据来源：`DesktopApplication._ball_counts()` 返回 `(未完成总数, 48h 内到期, 已逾期)`，
+`poll_forever()` 每 30 秒取一次（取不到就画黄色 `!`），不阻塞主 UI 线程。
+
+> 拖拽用绝对位移而不是增量，是因为旧版（WebView2 + IPC 增量）在 125% DPI 下每帧取整会累积
+> 偏移，拖久了明显跟不上手；绝对位移每次从原点点算，没有漂移。
+> 旧的 `ball.html` 和 `ball_move()` / `ball_position()` 桥接方法保留着但**已无前端调用**，
+> 只作历史参考。
+
 **托盘常驻**
 
-- `TrayController` 用 WinForms `NotifyIcon` + `ContextMenuStrip`：
-  打开主界面 / 显示悬浮窗 / 退出作业备忘，双击图标等同“打开主界面”。
+- `TrayController` 用 WinForms `NotifyIcon` 常驻；左键单击直接打开主界面，右键弹出自绘菜单。
+- 菜单是 `TrayMenuPopup`：**无边框 `Form` + GDI+ 手绘**，不是 `ContextMenuStrip`。
+  原因：本环境下 pythonnet **不会回调被重写的虚拟方法**（`OnPaint`、`Timer.OnTick`、
+  `ToolStripProfessionalRenderer.OnRender*` 都实测无效），只能靠 `+=` 事件委托，
+  所以 ToolStrip 换肤这条路走不通。
+- 菜单结构（`rows`）：
+  - `("sep",)`：分隔线
+  - `("item", 文本, 图标名, 危险色, 加粗, 回调)`：图标名取 `open` / `float` / `quit`
+- 视觉常量：`TRAY_MENU_WIDTH=218`、`TRAY_MENU_ITEM_H=38`、`TRAY_MENU_HEADER_H=28`、
+  `TRAY_MENU_ICON=18`，颜色集中在 `TRAY_COLORS`（浅底 `#FBFCF9`、悬停 `#E8F1EB`、
+  主色 `#2F5B4C`、危险 `#B2423C`）。像素按 `DeviceDpi/96` 缩放，字号保持 pt。
+- 交互：鼠标移动改 `_hover` 后 `Invalidate`；`Deactivate` 有 250ms 宽限期（弹出瞬间
+  还没拿到焦点时不关闭），Esc 关闭；点击项先 `close()` 再执行回调。
+- 「显示悬浮窗 / 收起悬浮窗」文案由 `TrayController._menu_rows()` 现算，
+  依据是 `DesktopBridge.floating_visible`（构造函数传入 `float_state`）。
+- Win11 圆角走 `DwmSetWindowAttribute(..., 33, DWMWCP_ROUND=2)`，并加
+  `WS_EX_TOOLWINDOW` 让它不出现在 Alt+Tab。
 - NotifyIcon 必须在 WinForms UI 线程创建：`_on_window_shown` 里通过
-  `native.Invoke(Action(...))` 完成；菜单/双击回调也跑在 UI 线程，窗口 API
+  `native.Invoke(Action(...))` 完成；菜单回调也跑在 UI 线程，窗口 API
   一律丢到后台线程执行（`_dispatch`），否则会卡死界面。
-- 关闭窗口（标题栏 × 或 Alt+F4）→ `hide_to_tray()`：隐藏主窗和悬浮窗，
+- 关闭窗口（标题栏 × 或 Alt+F4）→ `hide_to_tray()`：隐藏主窗、显示悬浮球，
   进程、本地服务、登录态都保留，第一次会弹一次气泡提示。
 - 退出：托盘菜单 → `DesktopApplication._quit_from_tray()` 先 `begin_shutdown()`
   再释放托盘图标、销毁窗口，`webview.start()` 返回后停服务并写退出日志。
@@ -143,10 +205,12 @@
 
 | 文件 | 责任 |
 | --- | --- |
-| `desktop_app.py` | 桌面入口；无边框主窗口和悬浮窗；标题栏桥接、缩放、DWM 圆角；托盘图标；单实例与唤回；退出清理 |
+| `desktop_app.py` | 桌面入口；无边框主窗口；标题栏桥接、缩放、DWM 圆角；悬浮球的生命周期、位置持久化、角标数据；托盘图标与自绘右键菜单；单实例与唤回；退出清理 |
+| `ball_window.py` | 悬浮球：原生分层窗口（`WS_EX_LAYERED`）+ GDI+ 绘制，`UpdateLayeredWindow` 逐像素透明，自绘圆球/阴影/图标/角标，处理拖拽、单击、右键 |
 | `homework_server.py` | 本地 HTTP API、登录、DPAPI、TronClass 数据归一化、完成状态 |
 | `homework-reminder.html` | 主界面 HTML/CSS/JS；自绘标题栏、拖拽/缩放热区、隐形滚动条 |
-| `floating.html` | 悬浮窗 HTML/CSS/JS；自绘头部、关闭按钮、隐形滚动条 |
+| `ball.html` | 旧版悬浮球页面（WebView2 + CSS 画球）；已被 `ball_window.py` 取代，程序不再加载，仅留作历史参考 |
+| `floating.html` | 1.1.0 的旧版 380×500 悬浮窗；已被悬浮球取代，不再引用、不打包（历史文件） |
 | `homework-desk.ico` | 窗口图标与托盘图标 |
 | `HomeworkDesk.spec` | PyInstaller 打包配置 |
 | `installer.iss` | Inno Setup 安装脚本 |
@@ -187,7 +251,7 @@
 | POST | `/api/login` | 手动登录；支持图形验证码 |
 | POST | `/api/logout` | 退出并清除登录信息 |
 | POST | `/api/homework/{id}/complete` | 仅本机标记完成 |
-| GET | `/floating.html` | 悬浮窗页面 |
+| GET | `/ball.html`（`/ball`） | 旧版悬浮球页面（程序不再使用，路由保留） |
 
 所有接口只监听 `127.0.0.1`，并检查 Host/Origin。密码不会返回给前端。
 
@@ -199,12 +263,19 @@
 | 方法 | 参数 | 说明 |
 | --- | --- | --- |
 | `window_state` | `target` | 返回 `{ok, maximized}`，用于同步最大化/还原图标 |
-| `window_control` | `target, action` | `minimize` / `toggle-maximize` / `close`；主窗 `close` = 收起到托盘 |
+| `window_control` | `target, action` | `minimize` / `toggle-maximize` / `close` / `hide`；主窗 `close` = 隐藏主窗 + 显示悬浮球 |
 | `window_resize` | `target, edge` | 触发系统原生缩放；`edge` 为 `left/right/top/.../bottom-right` |
-| `toggle_floating` | — | 显示/隐藏悬浮窗，返回 `{open}` |
-| `get_floating_state` | — | 主界面轮询悬浮窗是否打开 |
-| `show_main` / `show_main_and_login` | — | 从悬浮窗回到主界面 |
-| `hide_floating` | — | 收起悬浮窗 |
+| `toggle_floating` | — | 显示/隐藏悬浮球，返回 `{open}` |
+| `get_floating_state` | — | 主界面轮询悬浮球是否显示 |
+| `show_main` / `show_main_and_login` | — | 回到主界面（同时收起悬浮球） |
+| `hide_floating` | — | 收起悬浮球 |
+| `hide_to_tray` | — | 隐藏主窗 + 显示悬浮球，进程不退出 |
+| `activate_main` | — | 收起悬浮球 + 显示并前置主窗 |
+| `ball_move` | `dx, dy, final=False` | 拖拽：按 CSS 像素增量移动悬浮球（内部 `SetWindowPos`）；`final=true` 时同一次调用写盘 |
+| `ball_position` | — | 返回悬浮球当前 `{ok, x, y}`（物理像素） |
+| `ball_save_position` | — | 手动保存当前坐标（`ball_move(final=True)` 已覆盖，保留兼容） |
+| `ball_open_main` | — | 单击悬浮球：回主界面 |
+| `ball_hide` | — | 右键悬浮球：收起 |
 | `open_external` | `url` | 只允许 http/https，用系统浏览器打开 |
 
 > 这些方法都由 pywebview 在非 UI 线程调度；**不要**在 WinForms 事件或
@@ -293,7 +364,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 输出：
 
 - `dist\HomeworkDesk\HomeworkDesk.exe`：便携版程序目录
-- `dist_installer\作业备忘-安装程序-1.1.0.exe`：安装程序
+- `..\version\作业备忘-安装程序-1.2.0.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
 
 ### 5.3 单独构建
 
@@ -317,7 +388,7 @@ py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 Releases 中作为附件上传。发布前计算校验值：
 
 ```powershell
-Get-FileHash .\release\作业备忘-安装程序-1.1.0.exe -Algorithm SHA256
+Get-FileHash ..\version\作业备忘-安装程序-1.2.0.exe -Algorithm SHA256
 ```
 
 ---
@@ -329,25 +400,65 @@ Get-FileHash .\release\作业备忘-安装程序-1.1.0.exe -Algorithm SHA256
 - 真实深大账号首次登录成功，并同步到待办数据。
 - 删除会话文件后重启服务，自动使用 DPAPI 加密凭据重新登录成功。
 - 主界面加载真实数据、刷新成功。
-- 主界面打开悬浮窗后，悬浮窗置顶显示，尺寸约 380×500。
-- 悬浮窗点击“完整界面”回到主界面。
-- 悬浮窗标题栏关闭按钮回到主界面，不退出程序。
-- 关闭主窗口只把窗口收起到托盘，进程和本地服务继续在后台运行。
-- 托盘图标可重新打开主界面、切换悬浮窗，并从托盘菜单真正退出。
+- 悬浮球置顶显示、80×80、不进任务栏、不抢焦点。
+- 关闭主窗口后主窗隐藏、悬浮球出现，进程和本地服务继续在后台运行。
+- 托盘图标可重新打开主界面、切换悬浮球，并从托盘菜单真正退出。
 - 重复双击快捷方式会唤回已收起的窗口，不会产生第二个实例。
 - 安装程序创建桌面、开始菜单和 Startup 快捷方式，路径指向安装后的 EXE。
 - 图形验证码前端流程（显示、重试）通过模拟接口验证。
 
+悬浮球验证（原生分层窗口版）：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 窗口尺寸 | 80×80（`GetWindowRect` 实测，打包版同样） |
+| 逐像素透明 | 四角 4×4 采样与“关掉球之后”的桌面像素完全一致（差异 0/64） |
+| 球体绘制 | 中心区域 400 个采样点中 >300 与背景不同 |
+| 窗口样式 | `WS_EX_LAYERED` + `WS_EX_TOPMOST` + `WS_EX_TOOLWINDOW` + `WS_EX_NOACTIVATE` |
+| 主界面标题栏 × | 主窗隐藏、悬浮球出现、进程存活 |
+| 拖拽 | 起点 (500,400) 拖到 (400,430) → 窗口位移正好 (-100, +30) |
+| 松手落盘 | `ball-state.json` 与窗口实际坐标一致 |
+| 收起 / 再显示 | 回到上次位置 |
+| 单击悬浮球 | 回主界面并收起悬浮球 |
+| 右键悬浮球 | 收起，进程不退出 |
+| 主界面「悬浮球」按钮 | 一次点击显示、再点收起 |
+| 角标数字 | 未完成 11 条 → 红底白字「11」 |
+| 快照（打包版 exe） | 启动 → `WM_CLOSE` → 球在 (1582,265)，截图可见绿色圆球 + 文档图标 + 红色角标，四周透出背景文字 |
+
+> 验证时用截图比对：先截“有球”的画面，再 `hide_floating()` 截“无球”的画面，
+> 两者在球外区域必须一致。直接按像素总数比对会被动态壁纸/视频干扰，所以只看四角。
+
 窗口改版（源码预览 + 重新打包的 EXE）额外验证：
 
 - 无边框窗口正常显示自绘 38px 标题栏（图标、标题、三个窗口按钮），无系统白条。
-- 客户区尺寸补回 1180×830 / 380×500，标题栏不遮挡页面内容。
+- 客户区尺寸补回 1180×830，标题栏不遮挡页面内容。
 - 四边、四角缩放走系统原生循环；最大化贴合工作区、不盖任务栏，还原后恢复圆角。
-- 主页面与悬浮窗滚动条均为“滚动浮现、约 1 秒淡出、右侧热区唤出、悬停墨绿”。
+- 主页面滚动条为“滚动浮现、约 1 秒淡出、右侧热区唤出、悬停墨绿”。
 - 托盘图标创建成功；隐藏后进程、本地服务、自动登录状态都保留。
 - 托盘“退出作业备忘”能在后台线程正常结束 `webview.start()` 并退出进程
   （用独立测试脚本调用 `_quit_from_tray()` 验证）。
 - 打包后的 `HomeworkDesk.exe` 同样通过上述关闭→托盘→唤回→退出流程。
+
+自绘托盘菜单（2026-10 版）额外验证：
+
+- 直接用 `TrayMenuPopup._paint(Graphics)` 渲染三种状态（无悬停 / 悬停普通项 /
+  悬停退出项）并放大检查，圆角、图标、文字基线、分隔线都正常。
+- 在真实 `TrayController` 上模拟右键：菜单成功弹出（218×176），文案随
+  `float_state` 变成「收起悬浮窗」，点击该项触发回调并自动关闭菜单。
+- 安装目录里的 `HomeworkDesk.exe` 用真实鼠标操作复测：
+
+  | 操作 | 结果 |
+  | --- | --- |
+  | 托盘图标右键 | 弹出 218×176 圆角卡片菜单，位于光标上方 8px、右对齐图标 |
+  | 鼠标移到「打开主界面」 | 出现淡墨绿圆角胶囊高亮，图标与文字不变色 |
+  | 点「显示悬浮窗」 | 菜单先关闭，悬浮窗出现并置顶；再开菜单文案变「收起悬浮窗」 |
+  | 左键单击图标 | 主窗口回到前台（不弹菜单） |
+  | Esc | 菜单关闭，主界面不受影响 |
+  | 点「退出作业备忘」 | 日志写「从托盘退出应用。/ 桌面应用退出。」，进程结束 |
+
+- 托盘菜单关闭方式：Esc、点菜单外（`Deactivate` + 250ms 宽限）。
+- 小坑：菜单坐标依赖光标位置（`show_at` 用光标点向上弹），自动化点击时不要
+  假设固定的窗口位置，先按窗口尺寸（218×176）找到弹窗再算行坐标。
 
 未使用真实账号验证的情形：
 
@@ -390,14 +501,33 @@ Get-FileHash .\release\作业备忘-安装程序-1.1.0.exe -Algorithm SHA256
 ### 7.3.1 关闭窗口后“找不到程序”
 
 这是预期行为：关闭只是收起到托盘。查看任务栏右下角的“^ / 隐藏的图标”，
-找到作业备忘图标双击即可；也可以在“设置 → 个性化 → 任务栏”里把该图标设为常显。
-要真正结束进程：托盘右键 →「退出作业备忘」，或任务管理器结束 `HomeworkDesk.exe`。
+找到作业备忘图标**单击**即可打开主界面；也可以在“设置 → 个性化 → 任务栏”里把该图标设为常显。
+要真正结束进程：托盘图标**右键** →「退出作业备忘」，或任务管理器结束 `HomeworkDesk.exe`。
 
-### 7.3.2 托盘没有图标
+### 7.3.2 托盘没有图标 / 右键菜单异常
 
 - 先确认进程还在（任务管理器里能看到 `HomeworkDesk.exe`）。
 - 日志里应有 `托盘图标已创建`；若为 `创建托盘图标失败`，把日志和 Windows 版本一起反馈。
 - 图标可能只是被 Win11 收进了溢出区；拖出来即可常显。
+- 菜单弹不出来时看日志里有没有 `显示托盘菜单失败` / `绘制托盘菜单失败`。
+  菜单是自绘 Form，若出现空白方块，多半是新加的绘制代码抛异常——
+  回调里的异常只写日志，不会弹窗。
+- 想调整菜单外观，改 `desktop_app.py` 顶部的 `TRAY_MENU_*` 常量和 `TRAY_COLORS`，
+  不要改回 `ContextMenuStrip`：本环境 pythonnet 不回调重写的 `OnRender*`。
+
+### 7.3.3 悬浮球不见了 / 样子不对
+
+| 现象 | 先看这里 |
+| --- | --- |
+| 关掉主界面后桌面没有球 | 日志是否有 `显示悬浮球失败`；托盘菜单的「显示悬浮球」能否唤出；球可能被拖到了某个显示器边缘，删掉 `data\ball-state.json` 后重新显示即回到默认位置（右上角）。 |
+| 球出现在屏幕外、点不到 | `_position_ball()` 会用 `clamp_ball_position()` 夹回工作区；如果当时那块显示器已经拔掉，删 `ball-state.json` 即可。 |
+| 球周围有一块方形浅灰/黑底 | 说明 `UpdateLayeredWindow` 没生效：确认窗口带 `WS_EX_LAYERED`，且位图是 `Format32bppPArgb`（用 `Argb` 会算错 alpha 预乘，边缘发黑）；圆外必须真正清成 `Color.Transparent`。 |
+| 球边缘有黑边 / 锯齿 | 同上，多为 `PArgb` 与 `Clear(Color.Transparent)` 被改动，或 `SmoothingMode` 不是 `AntiAlias`。 |
+| 球能看见但点不动 / 点别处就消失 | 检查 `WM_MOUSEACTIVATE` 是否返回 `MA_NOACTIVATE`；返回默认值会把前台窗口切走。 |
+| 拖动跟不上鼠标 / 越拖越偏 | 拖拽必须是 `_drag_origin + (cursor - _drag_start)` 的绝对位移；改成累加增量或在前端取整会漂。 |
+| 重启后球回到旧位置 | 松手时 `move_to(..., notify=True)` 才写 `ball-state.json`；确认该文件可写。 |
+| 启动时球在屏幕外找不到 | 窗口创建后立刻 `move_to()` 到 `clamp_ball_position()` 的结果；如果保存的坐标来自已拔掉的显示器，删 `ball-state.json`。 |
+| 点击球后全屏游戏被切出来 | 检查 `WS_EX_NOACTIVATE` 是否被抠掉，以及 `activate_main()` 是否被误触发。 |
 
 ### 7.4 自动启动
 
@@ -430,7 +560,10 @@ Get-FileHash .\release\作业备忘-安装程序-1.1.0.exe -Algorithm SHA256
 - 修改窗口行为时检查：
   - 主窗口关闭是否只收起到托盘，进程是否仍在运行；
   - 托盘菜单能否重新打开窗口并真正退出；
-  - 悬浮窗关闭是否只回主界面；
+  - 托盘菜单的「显示/收起悬浮窗」文案是否跟当前状态一致；
+  - 悬浮球关闭 / 收起是否只隐藏球、主界面能正常回来；
+  - 悬浮球是否 80×80、透明、置顶、不进任务栏；
+  - 拖动后 `ball-state.json` 是否跟着更新；
   - 单实例互斥是否仍生效，重复启动能否唤回窗口。
 - 不要在前端或仓库里写死账号、密码、Cookie、真实作业数据。
 
@@ -445,6 +578,7 @@ Get-FileHash .\release\作业备忘-安装程序-1.1.0.exe -Algorithm SHA256
 - [x] 安装程序、快捷方式、自启动
 - [x] 构建脚本和打包配置
 - [x] 无边框标题栏、隐形滚动条、托盘常驻（2026-10 改版）
+- [x] 80×80 透明悬浮球、主界面 ⇄ 悬浮球切换、拖拽与位置记忆（步骤 2）
 - [x] 使用文档、更新日志、交接文档
 - [x] 安装包和 SHA256 校验值
 - [ ] 开源许可证（当前未指定，公开发布前需决定）
@@ -493,7 +627,7 @@ git push -u origin main
 4. 安装包可以随 `release/` 一起提交，也可以在 GitHub Releases 中单独上传。
 
 上传后建议在 GitHub Releases 中发布 `1.1.0`，附件使用
-`release/作业备忘-安装程序-1.1.0.exe`，并附上 `release/SHA256SUMS.txt` 的内容。
+`version/作业备忘-安装程序-1.2.0.exe`，并附上 SHA256 校验值。
 
 当前仓库**没有附带开源许可证**。如果准备公开源码，发布前需要明确选择
 MIT / Apache-2.0 / 私有仓库等授权方式；如仅自用，保持私有仓库即可。

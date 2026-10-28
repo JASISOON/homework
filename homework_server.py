@@ -60,7 +60,7 @@ except ImportError as exc:  # pragma: no cover
 
 
 APP_NAME = "HomeworkDesk"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 APP_DIR = Path(__file__).resolve().parent
 
 
@@ -80,7 +80,7 @@ def resource_path(filename: str) -> Path:
 
 
 APP_HTML = resource_path("homework-reminder.html")
-FLOATING_HTML = resource_path("floating.html")
+BALL_HTML = resource_path("ball.html")
 ICON_PATH = resource_path("homework-desk.ico")
 DEFAULT_PORT = 8765
 HOST = "127.0.0.1"
@@ -1519,8 +1519,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/": APP_HTML,
             "/index.html": APP_HTML,
             "/homework-reminder.html": APP_HTML,
-            "/floating": FLOATING_HTML,
-            "/floating.html": FLOATING_HTML,
+            "/ball": BALL_HTML,
+            "/ball.html": BALL_HTML,
         }
         if path in page_map:
             page_path = page_map[path]

@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('homework-reminder.html', '.'), ('floating.html', '.'), ('homework-desk.ico', '.')]
+datas = [('homework-reminder.html', '.'), ('homework-desk.ico', '.')]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('webview')

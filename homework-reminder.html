@@ -2837,9 +2837,9 @@
           </span>
           <span class="last-update">最后更新 <time id="lastUpdated">—</time></span>
         </div>
-        <button class="refresh-btn float-toggle" id="floatToggle" type="button" aria-label="打开悬浮窗" aria-pressed="false" title="打开悬浮窗">
+        <button class="refresh-btn float-toggle" id="floatToggle" type="button" aria-label="显示悬浮球" aria-pressed="false" title="显示悬浮球">
           <svg class="icon" aria-hidden="true"><use href="#i-pip"></use></svg>
-          <span>悬浮窗</span>
+          <span>悬浮球</span>
         </button>
         <button class="refresh-btn" id="refreshBtn" type="button" aria-label="刷新作业数据">
           <svg class="icon refresh-icon" aria-hidden="true"><use href="#i-refresh"></use></svg>
@@ -3193,8 +3193,6 @@
         renderedAt: 0,
         initialAuthPrompted: false,
         floatingOpen: false,
-        floatingPopup: null,
-        floatingPopupTimer: null,
         floatingStateTimer: null,
         floatingToggling: false,
         desktopBridgeReady: false
@@ -3710,10 +3708,10 @@
         const open = Boolean(state.floatingOpen);
         els.floatToggle.classList.toggle('is-active', open);
         els.floatToggle.setAttribute('aria-pressed', String(open));
-        els.floatToggle.setAttribute('aria-label', open ? '关闭悬浮窗' : '打开悬浮窗');
-        els.floatToggle.title = open ? '关闭悬浮窗' : '打开悬浮窗';
+        els.floatToggle.setAttribute('aria-label', open ? '收起悬浮球' : '显示悬浮球');
+        els.floatToggle.title = open ? '收起悬浮球' : '显示悬浮球';
         const label = els.floatToggle.querySelector('span');
-        if (label) setText(label, open ? '收起悬浮' : '悬浮窗');
+        if (label) setText(label, open ? '收起悬浮球' : '悬浮球');
       }
 
       function setFloatingState(open) {
@@ -3740,13 +3738,6 @@
         }
       }
 
-      function clearFloatingPopupTimer() {
-        if (state.floatingPopupTimer) {
-          clearInterval(state.floatingPopupTimer);
-          state.floatingPopupTimer = null;
-        }
-      }
-
       async function toggleFloatingMode() {
         if (state.floatingToggling) return;
         state.floatingToggling = true;
@@ -3764,53 +3755,13 @@
               ? result
               : Boolean(result && result.open);
             setFloatingState(open);
-            if (open && syncChannel) {
-              syncChannel.postMessage({ type: 'float-opened', sender: WINDOW_ID });
-            }
             return;
           }
 
-          if (IS_MOCK) {
-            showToast('悬浮窗需要通过桌面版应用打开。');
-            return;
-          }
-
-          if (state.floatingPopup && !state.floatingPopup.closed) {
-            state.floatingPopup.close();
-            state.floatingPopup = null;
-            clearFloatingPopupTimer();
-            setFloatingState(false);
-            return;
-          }
-
-          const width = 380;
-          const height = 500;
-          const left = Math.max(0, (window.screen.availWidth || 1440) - width - 24);
-          const top = 80;
-          const popup = window.open(
-            '/floating.html',
-            'homework-desk-floating',
-            `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no`
-          );
-
-          if (!popup) {
-            showToast('浏览器拦截了悬浮窗，请允许弹出窗口后重试。', 'error');
-            return;
-          }
-
-          state.floatingPopup = popup;
-          setFloatingState(true);
-          clearFloatingPopupTimer();
-          state.floatingPopupTimer = setInterval(() => {
-            if (!state.floatingPopup || state.floatingPopup.closed) {
-              state.floatingPopup = null;
-              clearFloatingPopupTimer();
-              setFloatingState(false);
-            }
-          }, 600);
+          showToast('悬浮球只能在桌面版应用里显示。');
         } catch (error) {
-          console.error('[作业备忘] 切换悬浮窗失败：', error);
-          showToast('无法打开悬浮窗，请重试。', 'error');
+          console.error('[作业备忘] 切换悬浮球失败：', error);
+          showToast('无法切换悬浮球，请重试。', 'error');
         } finally {
           state.floatingToggling = false;
         }
@@ -4571,13 +4522,9 @@
       }
 
       window.addEventListener('beforeunload', () => {
-        clearFloatingPopupTimer();
         if (state.floatingStateTimer) {
           clearInterval(state.floatingStateTimer);
           state.floatingStateTimer = null;
-        }
-        if (state.floatingPopup && !state.floatingPopup.closed) {
-          state.floatingPopup.close();
         }
         if (syncChannel) syncChannel.close();
       });

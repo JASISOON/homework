@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>作业备忘 · 悬浮球</title>
+<style>
+  :root {
+    --ball-size: 64px;
+    --ball-a: #4c8f76;
+    --ball-b: #2b5647;
+    --danger: #cf5b4e;
+    --ink: #244a3c;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: default;
+  }
+
+  #ball {
+    position: fixed;
+    left: 8px;
+    top: 8px;
+    width: var(--ball-size);
+    height: var(--ball-size);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background:
+      radial-gradient(120% 120% at 30% 22%, rgba(255, 255, 255, .38) 0%, rgba(255, 255, 255, 0) 46%),
+      linear-gradient(150deg, var(--ball-a) 0%, var(--ball-b) 100%);
+    box-shadow:
+      0 6px 16px rgba(24, 44, 36, .38),
+      0 1px 3px rgba(24, 44, 36, .28),
+      inset 0 1px 0 rgba(255, 255, 255, .45),
+      inset 0 -6px 12px rgba(12, 32, 24, .22);
+    transform: scale(1);
+    transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+    touch-action: none;
+    will-change: transform;
+  }
+
+  body.is-desktop-app #ball:hover {
+    transform: scale(1.05);
+    filter: saturate(1.06) brightness(1.04);
+    box-shadow:
+      0 9px 20px rgba(24, 44, 36, .42),
+      0 2px 4px rgba(24, 44, 36, .3),
+      inset 0 1px 0 rgba(255, 255, 255, .5),
+      inset 0 -6px 12px rgba(12, 32, 24, .2);
+  }
+
+  body.is-dragging #ball {
+    transform: scale(1.02);
+    transition: none;
+    cursor: grabbing;
+  }
+
+  #ball:active { transform: scale(.96); }
+
+  #ball .glyph {
+    width: 28px;
+    height: 28px;
+    opacity: .96;
+    pointer-events: none;
+    filter: drop-shadow(0 1px 1px rgba(14, 34, 26, .35));
+  }
+
+  #badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 11px;
+    background: #fff;
+    color: var(--ink);
+    font: 700 12px/22px "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+    text-align: center;
+    letter-spacing: .2px;
+    box-shadow: 0 2px 6px rgba(20, 40, 32, .32), 0 0 0 2px rgba(43, 86, 71, .18);
+    pointer-events: none;
+    transition: background .2s ease, color .2s ease, transform .2s ease;
+  }
+
+  #badge.is-urgent {
+    background: var(--danger);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(120, 32, 26, .38), 0 0 0 2px rgba(255, 255, 255, .55);
+  }
+
+  #badge.is-empty {
+    transform: scale(.7);
+    opacity: 0;
+  }
+
+  #badge.is-error {
+    background: #f0c04a;
+    color: #4a3a08;
+  }
+
+  #ring {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid rgba(207, 91, 78, .55);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease;
+  }
+
+  #ball.has-urgent #ring {
+    opacity: 1;
+    animation: pulse 2.4s ease-out infinite;
+  }
+
+  @keyframes pulse {
+    0%   { opacity: .75; transform: scale(.96); }
+    70%  { opacity: 0;   transform: scale(1.14); }
+    100% { opacity: 0;   transform: scale(1.14); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #ball, #badge, #ring { transition: none; }
+    #ball.has-urgent #ring { animation: none; opacity: .7; }
+  }
+</style>
+</head>
+<body>
+  <div id="ball" role="button" tabindex="0" aria-label="作业备忘悬浮球">
+    <span id="ring" aria-hidden="true"></span>
+    <svg class="glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M8.5 5.2h7a2 2 0 0 1 2 2v11.2a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V7.2a2 2 0 0 1 2-2Z"
+            stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+      <path d="M9.6 3.4h4.8a1.1 1.1 0 0 1 1.1 1.1v1.6H8.5V4.5a1.1 1.1 0 0 1 1.1-1.1Z"
+            fill="currentColor" opacity=".92" />
+      <path d="M9.2 11.4h5.6M9.2 14.6h5.6M9.2 17.4h3.4"
+            stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".9" />
+    </svg>
+    <span id="badge" class="is-empty" aria-hidden="true">0</span>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const URGENT_LIMIT = 48 * 60 * 60 * 1000;
+      const WINDOW_ID = (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `ball-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const syncChannel = 'BroadcastChannel' in window
+        ? new BroadcastChannel('homework-desk')
+        : null;
+
+      const ball = document.getElementById('ball');
+      const badge = document.getElementById('badge');
+
+      const state = {
+        total: 0,
+        urgent: 0,
+        overdue: 0,
+        loading: false,
+        failed: false,
+        lastFetchAt: 0
+      };
+
+      function desktopApi() {
+        return window.pywebview && window.pywebview.api ? window.pywebview.api : null;
+      }
+
+      function renderBadge() {
+        const urgent = state.urgent + state.overdue;
+        const text = state.total > 99 ? '99+' : String(state.total);
+
+        badge.textContent = state.failed && !state.total ? '!' : text;
+        badge.classList.toggle('is-empty', !state.failed && state.total <= 0);
+        badge.classList.toggle('is-urgent', !state.failed && urgent > 0);
+        badge.classList.toggle('is-error', state.failed);
+        ball.classList.toggle('has-urgent', !state.failed && urgent > 0);
+
+        const parts = [];
+        if (state.total > 0) parts.push(`${state.total} 项未完成`);
+        if (state.overdue > 0) parts.push(`${state.overdue} 项已逾期`);
+        if (state.urgent > 0) parts.push(`${state.urgent} 项紧急`);
+        if (!parts.length) parts.push(state.failed ? '暂时取不到作业数据' : '暂无未完成作业');
+        ball.title = `${parts.join(' · ')}\n单击打开主界面，拖动可移动，右键收起`;
+      }
+
+      async function refresh() {
+        if (state.loading) return;
+        state.loading = true;
+        try {
+          const response = await fetch('/api/homework', {
+            headers: { Accept: 'application/json' },
+            cache: 'no-store'
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const payload = await response.json();
+          const items = Array.isArray(payload.assignments) ? payload.assignments : [];
+          const now = Date.now();
+          let total = 0;
+          let urgent = 0;
+          let overdue = 0;
+          items.forEach((item) => {
+            if (item.completed) return;
+            total += 1;
+            const due = new Date(item.dueDate).getTime();
+            if (Number.isNaN(due)) return;
+            const remaining = due - now;
+            if (remaining <= 0) overdue += 1;
+            else if (remaining <= URGENT_LIMIT) urgent += 1;
+          });
+          state.total = total;
+          state.urgent = urgent;
+          state.overdue = overdue;
+          state.failed = false;
+          state.lastFetchAt = Date.now();
+        } catch (error) {
+          console.warn('[作业备忘悬浮球] 读取作业失败：', error);
+          state.failed = true;
+        } finally {
+          state.loading = false;
+          renderBadge();
+        }
+      }
+
+      // -- 拖拽（通过桌面桥移动原生窗口） ------------------------------
+      const drag = {
+        active: false,
+        moved: false,
+        startX: 0,
+        startY: 0,
+        lastDx: 0,
+        lastDy: 0,
+        lastSent: 0
+      };
+
+      function sendMove(dx, dy, final) {
+        const api = desktopApi();
+        if (!api || typeof api.ball_move !== 'function') return;
+        const stepX = dx - drag.lastDx;
+        const stepY = dy - drag.lastDy;
+        if (!stepX && !stepY && !final) return;
+        drag.lastDx = dx;
+        drag.lastDy = dy;
+        // final = 松手：让桌面端在同一次调用里移动 + 落盘，避免“移动”和“保存”乱序。
+        api.ball_move(stepX, stepY, Boolean(final)).catch(() => {});
+      }
+
+      ball.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        drag.active = true;
+        drag.moved = false;
+        drag.startX = event.screenX;
+        drag.startY = event.screenY;
+        drag.lastDx = 0;
+        drag.lastDy = 0;
+        drag.lastSent = performance.now();
+        // 指针捕获失败不影响拖拽（窗口本身跟着鼠标走），但不能让它抛异常中断处理。
+        try {
+          ball.setPointerCapture(event.pointerId);
+        } catch {
+          /* ignore */
+        }
+        document.body.classList.add('is-dragging');
+      });
+
+      ball.addEventListener('pointermove', (event) => {
+        if (!drag.active) return;
+        const dx = event.screenX - drag.startX;
+        const dy = event.screenY - drag.startY;
+        if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+        drag.moved = true;
+        const now = performance.now();
+        if (now - drag.lastSent < 16) return;
+        drag.lastSent = now;
+        sendMove(dx, dy);
+      });
+
+      function endDrag(event) {
+        if (!drag.active) return;
+        drag.active = false;
+        document.body.classList.remove('is-dragging');
+        try {
+          ball.releasePointerCapture(event.pointerId);
+        } catch {
+          /* ignore */
+        }
+
+        if (drag.moved) {
+          sendMove(event.screenX - drag.startX, event.screenY - drag.startY, true);
+        }
+      }
+
+      ball.addEventListener('pointerup', (event) => {
+        const wasClick = drag.active && !drag.moved;
+        endDrag(event);
+        if (wasClick) {
+          const api = desktopApi();
+          if (api && typeof api.ball_open_main === 'function') {
+            api.ball_open_main().catch(() => {});
+          }
+        }
+      });
+
+      ball.addEventListener('pointercancel', endDrag);
+
+      ball.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        const api = desktopApi();
+        if (api && typeof api.ball_hide === 'function') {
+          api.ball_hide().catch(() => {});
+        }
+      });
+
+      ball.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          const api = desktopApi();
+          if (api && typeof api.ball_open_main === 'function') api.ball_open_main().catch(() => {});
+        }
+      });
+
+      // -- 数据同步 ----------------------------------------------------
+      let syncTimer = 0;
+      if (syncChannel) {
+        syncChannel.addEventListener('message', (event) => {
+          if (!event.data || event.data.sender === WINDOW_ID) return;
+          if (event.data.type !== 'data-changed') return;
+          clearTimeout(syncTimer);
+          syncTimer = setTimeout(refresh, 600);
+        });
+      }
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && Date.now() - state.lastFetchAt > 5000) refresh();
+      });
+
+      setInterval(() => {
+        if (document.hidden) return;
+        if (Date.now() - state.lastFetchAt > 60000) refresh();
+      }, 30000);
+
+      function markDesktop() {
+        document.body.classList.add('is-desktop-app');
+      }
+
+      if (window.pywebview) {
+        markDesktop();
+      } else {
+        window.addEventListener('pywebviewready', markDesktop);
+      }
+
+      renderBadge();
+      refresh();
+    })();
+  </script>
+</body>
+</html>
