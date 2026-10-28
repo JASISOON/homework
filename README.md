@@ -10,16 +10,20 @@
 
 ![主界面（演示数据）](preview.png)
 
-> 悬浮球截图待补：运行程序后点主界面右上角的 ×，桌面右上角会出现 80 × 80 的透明圆球，
-> 右上角带未完成作业数字角标。`preview-floating.png` 还是 1.1.0 那个 380 × 500 悬浮窗的旧图。
+![悬浮球（放大 4 倍）](preview-ball.png)
+
+> 上图是悬浮球放大 4 倍的效果：中间是作业图标，右上角红底白字是未完成数量；
+> 有逾期或 48 小时内到期的作业时，球外会多一圈缓慢呼吸的红环。实际尺寸 80 × 80。
 
 ## 安装
 
 双击运行：
 
 ```
-version\作业备忘-安装程序-1.2.0.exe
+release\作业备忘-安装程序-1.2.0.exe
 ```
+
+校验值见 `release\SHA256SUMS.txt`（`Get-FileHash <文件> -Algorithm SHA256` 对比）。
 
 安装程序会：
 
@@ -43,10 +47,11 @@ version\作业备忘-安装程序-1.2.0.exe
 
 - 圆形球体，中间是作业图标，右上角是未完成作业的数字角标；有逾期或 48 小时内紧急作业时，
   角标变红并在球外圈出现一圈缓慢呼吸的红环。
-- 窗口本身是 80 × 80 的透明无边框窗口，只显示球体，其余区域完全透明，看不到方形底色。
+- 球体是**原生分层窗口**直接绘制的（不是网页窗口）：80 × 80、`WS_EX_LAYERED` +
+  `UpdateLayeredWindow`，圆外像素 alpha 为 0，所以只看到球，没有方形底色。
 - 始终置顶，但用 `WS_EX_TOOLWINDOW + WS_EX_NOACTIVATE` 处理：不占任务栏、不进 Alt+Tab、点击时不抢焦点。
-- 拖动通过桌面桥的 `ball_move` 增量调用 `SetWindowPos` 实现，松手时同一次调用内把坐标写进
-  `%LOCALAPPDATA%\HomeworkDesk\data\ball-state.json`；下次显示或重启后回到原处。
+- 拖动由窗口自己处理：按下时记下鼠标起点和窗口原点，移动时按「原点 + 位移」重算位置，
+  松手把坐标写进 `%LOCALAPPDATA%\HomeworkDesk\data\ball-state.json`；下次显示或重启后回到原处。
 - 拖到屏幕边缘会被自动夹回工作区（不会跑到任务栏下面或屏幕外找不回来）。
 - 球上的数字每 30 秒 / 主界面数据变化时刷新，与主界面使用同一个本地 API。
 
@@ -58,8 +63,8 @@ version\作业备忘-安装程序-1.2.0.exe
 - 窗口收起时再次双击桌面快捷方式，也会把已经运行的窗口叫回来，不会重复启动。
 - 要彻底退出程序，请用托盘菜单里的「退出作业备忘」。
 
-> 1.1.0 里那个 380 × 500 的悬浮窗（`floating.html`）已被悬浮球取代，程序不再加载它，
-> 也不会打进安装包。
+> 1.1.0 里那个 380 × 500 的悬浮窗（`floating.html`）和早期的网页版悬浮球（`ball.html`）
+> 都已被原生悬浮球取代，程序不再加载，也不会打进安装包。
 
 ## 功能
 
@@ -119,8 +124,8 @@ py -3.14 -m pip install -r requirements.txt
 # 构建 EXE（输出到 dist\HomeworkDesk）
 py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 
-# 构建安装程序（需要 Inno Setup 6，产物输出到 ..\version）
-& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" .\installer.iss
+# 构建安装程序（需要 Inno Setup 6，产物输出到仓库外的 ..\version）
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" .\installer.iss
 ```
 
 也可以运行 `build.ps1` 一次完成两步。

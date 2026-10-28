@@ -215,8 +215,9 @@ CreateWindowExW(
 | `HomeworkDesk.spec` | PyInstaller 打包配置 |
 | `installer.iss` | Inno Setup 安装脚本 |
 | `ChineseSimplified.isl` | Inno Setup 简体中文语言文件 |
-| `build.ps1` | 一键重新打包 EXE 和安装程序 |
-| `release/` | 可分发的安装程序和校验值 |
+| `build.ps1` | 一键重新打包 EXE 和安装程序（产物到 `..\version`） |
+| `release/` | 对外分发的安装包（只留当前版本）与 `SHA256SUMS.txt` |
+| `preview.png` / `preview-ball.png` | README 用的主界面与悬浮球预览图（演示数据，不含真实作业） |
 
 ---
 
@@ -382,14 +383,28 @@ py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 4. 重新运行 `build.ps1`。
 5. 用新安装包覆盖安装；`%LOCALAPPDATA%\HomeworkDesk\data` 会保留。
 
-### 5.5 GitHub 发布
+### 5.5 发布
 
-安装包约 13.8 MB，小于 GitHub 单文件限制，可以直接放在 `release/`，也建议在 GitHub
-Releases 中作为附件上传。发布前计算校验值：
+构建产物落在仓库外的 `..\version\`，仓库里**只保留当前版本**的安装包：
 
 ```powershell
-Get-FileHash ..\version\作业备忘-安装程序-1.2.0.exe -Algorithm SHA256
+# 1. 构建，输出 ..\version\作业备忘-安装程序-1.2.0.exe
+.\build.ps1
+
+# 2. 换掉 release 里的旧包
+Remove-Item .\release\*.exe
+Copy-Item ..\version\作业备忘-安装程序-1.2.0.exe .\release\
+
+# 3. 重算校验值
+#    文件名含中文，必须用 UTF-8 无 BOM 写，否则在别的编辑器里会变成 ???? 
+$name = (Get-ChildItem .\release\*.exe).Name
+$hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
+[System.IO.File]::WriteAllText("$PWD\release\SHA256SUMS.txt", "$hash  $name`n",
+    (New-Object System.Text.UTF8Encoding $false))
 ```
+
+安装包约 13 MB，小于 GitHub 单文件限制，可以随 `release/` 一起提交；
+更推荐放进 GitHub Releases 作为附件，git 历史里就不会反复堆积二进制。
 
 ---
 
@@ -590,7 +605,7 @@ Get-FileHash ..\version\作业备忘-安装程序-1.2.0.exe -Algorithm SHA256
 
 ```text
 1. 仓库内没有 .log、.dat、data、dist、build、dist_installer。
-2. release/ 中的安装程序是最终构建产物，SHA256SUMS.txt 已更新。
+2. release/ 里只有当前版本的安装程序，SHA256SUMS.txt 的哈希与实际文件一致。
 3. README 和 HANDOVER 中没有个人路径、用户名、真实作业数据。
 4. 安装包的版本号、文件名和 CHANGELOG 一致。
 5. 用一台没有登录过本应用的 Windows 账户做一次冷启动测试。
@@ -602,32 +617,41 @@ Get-FileHash ..\version\作业备忘-安装程序-1.2.0.exe -Algorithm SHA256
 
 ## 11. 上传到 GitHub
 
-当前项目目录已经按仓库结构整理，可以直接上传。推荐仓库名为 `homework-desk`。
+仓库已经建好并完成首次提交：
 
-上传前确认：目录里只有源码、文档、图标、预览图和 `release/`；
-`build/`、`dist/`、`__pycache__/` 已移到项目目录外，登录数据在
-`%LOCALAPPDATA%\HomeworkDesk\data`，两者都不在仓库里。
+| 项 | 值 |
+| --- | --- |
+| 远程 | `https://github.com/JASISOON/homework.git` |
+| 分支 | `main`（跟踪 `origin/main`） |
+| 当前版本 | 1.2.0 |
 
-命令行方式（在项目目录下执行）：
+### 日常更新流程
 
 ```powershell
-git init
-git add .
-git commit -m "Initial commit: Homework Desk 1.1.0"
-git branch -M main
-git remote add origin https://github.com/<你的用户名>/homework-desk.git
-git push -u origin main
+git status                 # 确认改动范围，data/、dist/、build/ 应被忽略
+git add -A
+git commit -m "feat: ..."  # 提交信息写清楚改了什么、为什么
+git push origin main
 ```
 
-网页上传方式：
+推送前先确认这几点：
 
-1. 在 GitHub 新建空仓库 `homework-desk`。
-2. 把项目目录内的文件拖入上传页面。
-3. 确认 `.gitignore` 也上传。
-4. 安装包可以随 `release/` 一起提交，也可以在 GitHub Releases 中单独上传。
+- `git status` 里没有 `data/`、`*.log`、`credentials.dat`、`session.dat`；
+- `release/` 里只有一个安装包，且和 `SHA256SUMS.txt` 对得上；
+- 版本号（`APP_VERSION` / `installer.iss` / `CHANGELOG.md`）三处一致。
 
-上传后建议在 GitHub Releases 中发布 `1.1.0`，附件使用
-`version/作业备忘-安装程序-1.2.0.exe`，并附上 SHA256 校验值。
+### 在 Releases 里发布
+
+1. GitHub 仓库 → Releases → Draft a new release，tag 填 `v1.2.0`。
+2. 附件上传 `release/作业备忘-安装程序-1.2.0.exe`。
+3. 说明直接复制 `CHANGELOG.md` 里对应版本的段落。
+4. 正文里附上 `SHA256SUMS.txt` 的哈希值。
+
+> 仓库里带中文文件名的安装包会让仓库体积随版本线性增长，所以只在 `release/`
+> 保留最新一版；旧版本从 git 历史或 Releases 里取。
+
+当前仓库**没有附带开源许可证**。如果准备公开源码，发布前需要明确选择
+MIT / Apache-2.0 / 私有仓库等授权方式；如仅自用，保持私有仓库即可。
 
 当前仓库**没有附带开源许可证**。如果准备公开源码，发布前需要明确选择
 MIT / Apache-2.0 / 私有仓库等授权方式；如仅自用，保持私有仓库即可。
