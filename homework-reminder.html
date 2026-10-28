@@ -12,28 +12,65 @@
     /* ============================================================
        设计变量
        ============================================================ */
-    :root {
+        :root {
+      /* ---- 底色与表面 ---- */
       --bg: #f4f1eb;
       --bg-deep: #ece7dc;
       --surface: #fffdf9;
       --surface-soft: #faf7f0;
+      --surface-tint: #f0ece3;
+      --gloss: rgba(255, 255, 255, 0.65);
+      --edge: rgba(255, 255, 255, 0.8);
+      --chip: rgba(255, 255, 255, 0.64);
+      /* ---- 文字 ---- */
       --ink: #202a24;
       --ink-soft: #3a463f;
       --muted: #7a8179;
       --muted-strong: #5c665e;
+      --muted-weak: #a7a095;
+      /* ---- 描边 ---- */
       --line: #e4dfd4;
+      --line-soft: #ebe6dc;
       --line-strong: #d7d0c2;
+      /* ---- 主色（墨绿） ---- */
       --green: #2f5b4c;
       --green-dark: #234438;
       --green-soft: #e7efe9;
+      --green-tint: #dbe7d5;
+      --green-line: #c5d2c7;
+      --accent-ink: #2f5b4c;
+      --accent-ink-strong: #234438;
+      /* ---- 危险色（红） ---- */
       --red: #b52d3b;
       --red-strong: #8d1f2c;
       --red-soft: #fcecec;
+      --red-tint: #fbe5e5;
+      --red-line: #ebcfd0;
+      --danger-ink: #8d1f2c;
+      /* ---- 提醒色（橙） ---- */
       --orange: #bd650d;
       --orange-strong: #9d5308;
       --orange-soft: #fff2df;
-      --shadow-sm: 0 1px 2px rgba(52, 45, 31, 0.04), 0 10px 30px -24px rgba(52, 45, 31, 0.28);
-      --shadow-md: 0 2px 3px rgba(52, 45, 31, 0.03), 0 24px 55px -38px rgba(52, 45, 31, 0.4);
+      --orange-tint: #fbe9cf;
+      --orange-line: #eadcc1;
+      --warn-ink: #9d5308;
+      /* ---- 彩色底上的文字 ---- */
+      --on-accent: #ffffff;
+      /* ---- 背景光效 / 阴影（RGB 三元组，供 rgba() 拼装） ---- */
+      --glow-a: rgba(170, 198, 177, 0.44);
+      --glow-b: rgba(235, 207, 166, 0.43);
+      --grid-rgb: 71, 83, 73;
+      --shadow-rgb: 52, 45, 31;
+      --green-rgb: 47, 91, 76;
+      --green-dark-rgb: 35, 68, 56;
+      --red-rgb: 181, 45, 59;
+      --red-strong-rgb: 141, 31, 44;
+      --orange-rgb: 189, 101, 13;
+      --muted-rgb: 122, 129, 121;
+      --surface-rgb: 255, 253, 249;
+      /* ---- 结构与字体 ---- */
+      --shadow-sm: 0 1px 2px rgba(var(--shadow-rgb), 0.04), 0 10px 30px -24px rgba(var(--shadow-rgb), 0.28);
+      --shadow-md: 0 2px 3px rgba(var(--shadow-rgb), 0.03), 0 24px 55px -38px rgba(var(--shadow-rgb), 0.4);
       --font-sans: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont,
         "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
       --radius-lg: 26px;
@@ -61,8 +98,8 @@
       min-height: 100vh;
       color: var(--ink);
       background:
-        radial-gradient(circle at 3% -6%, rgba(170, 198, 177, 0.44), transparent 32%),
-        radial-gradient(circle at 98% 1%, rgba(235, 207, 166, 0.43), transparent 29%),
+        radial-gradient(circle at 3% -6%, var(--glow-a), transparent 32%),
+        radial-gradient(circle at 98% 1%, var(--glow-b), transparent 29%),
         var(--bg);
       font-family: var(--font-sans);
       font-size: 15px;
@@ -79,8 +116,8 @@
       pointer-events: none;
       opacity: 0.62;
       background-image:
-        linear-gradient(rgba(71, 83, 73, 0.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(71, 83, 73, 0.035) 1px, transparent 1px);
+        linear-gradient(rgba(var(--grid-rgb), 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(var(--grid-rgb), 0.035) 1px, transparent 1px);
       background-size: 34px 34px;
       -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 72%);
       mask-image: linear-gradient(to bottom, #000 0%, transparent 72%);
@@ -97,7 +134,7 @@
 
     button:focus-visible,
     a:focus-visible {
-      outline: 3px solid rgba(47, 91, 76, 0.34);
+      outline: 3px solid rgba(var(--green-rgb), 0.34);
       outline-offset: 3px;
     }
 
@@ -139,7 +176,7 @@
        ============================================================ */
     * {
       scrollbar-width: thin;
-      scrollbar-color: rgba(122, 129, 121, 0.4) transparent;
+      scrollbar-color: rgba(var(--muted-rgb), 0.4) transparent;
     }
 
     html {
@@ -164,17 +201,17 @@
       min-height: 48px;
       border: 3px solid transparent;
       border-radius: 999px;
-      background: rgba(122, 129, 121, 0.32);
+      background: rgba(var(--muted-rgb), 0.32);
       background-clip: padding-box;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-      background: rgba(47, 91, 76, 0.55);
+      background: rgba(var(--green-rgb), 0.55);
       background-clip: padding-box;
     }
 
     ::-webkit-scrollbar-thumb:active {
-      background: rgba(35, 68, 56, 0.72);
+      background: rgba(var(--green-dark-rgb), 0.72);
       background-clip: padding-box;
     }
 
@@ -201,7 +238,7 @@
       width: 6px;
       min-height: 36px;
       border-radius: 999px;
-      background: rgba(122, 129, 121, 0.5);
+      background: rgba(var(--muted-rgb), 0.5);
       opacity: 0;
       pointer-events: auto;
       transition: opacity 240ms ease, background 160ms ease, width 160ms ease, right 160ms ease;
@@ -214,7 +251,7 @@
     .scroll-thumb:hover {
       right: 3px;
       width: 8px;
-      background: rgba(47, 91, 76, 0.62);
+      background: rgba(var(--green-rgb), 0.62);
     }
 
     .scroll-hover-zone {
@@ -312,11 +349,11 @@
       width: 43px;
       height: 43px;
       border-radius: 14px;
-      color: #fff;
+      color: var(--on-accent);
       background:
         linear-gradient(145deg, rgba(255, 255, 255, 0.14), transparent 48%),
         var(--green);
-      box-shadow: 0 8px 18px -12px rgba(35, 68, 56, 0.9);
+      box-shadow: 0 8px 18px -12px rgba(var(--green-dark-rgb), 0.9);
     }
 
     .brand-mark .icon {
@@ -381,8 +418,8 @@
       gap: 8px;
       height: var(--titlebar-h);
       padding: 0 6px 0 14px;
-      border-bottom: 1px solid rgba(228, 223, 212, 0.7);
-      background: rgba(246, 243, 237, 0.84);
+      border-bottom: 1px solid rgba(var(--surface-rgb), 0.7);
+      background: rgba(var(--surface-rgb), 0.84);
       -webkit-backdrop-filter: blur(16px) saturate(1.06);
       backdrop-filter: blur(16px) saturate(1.06);
     }
@@ -406,9 +443,9 @@
       width: 20px;
       height: 20px;
       border-radius: 6px;
-      color: #fff;
+      color: var(--on-accent);
       background: var(--green);
-      box-shadow: 0 4px 10px -7px rgba(35, 68, 56, 0.9);
+      box-shadow: 0 4px 10px -7px rgba(var(--green-dark-rgb), 0.9);
     }
 
     .app-titlebar__mark .icon {
@@ -437,7 +474,7 @@
     .app-titlebar__meta::before {
       content: "·";
       margin-right: 6px;
-      color: #c3bcae;
+      color: var(--muted-weak);
     }
 
     .app-titlebar__drag {
@@ -461,7 +498,7 @@
       padding: 0;
       border: 0;
       border-radius: 8px;
-      color: #6b756e;
+      color: var(--ink-soft);
       background: transparent;
       cursor: pointer;
       transition: background 140ms ease, color 140ms ease;
@@ -478,16 +515,16 @@
     }
 
     .win-btn:hover {
-      color: var(--green-dark);
-      background: rgba(35, 68, 56, 0.08);
+      color: var(--accent-ink-strong);
+      background: rgba(var(--green-dark-rgb), 0.08);
     }
 
     .win-btn:active {
-      background: rgba(35, 68, 56, 0.14);
+      background: rgba(var(--green-dark-rgb), 0.14);
     }
 
     .win-btn--close:hover {
-      color: #fff;
+      color: var(--on-accent);
       background: var(--red);
     }
 
@@ -602,10 +639,10 @@
       gap: 6px;
       flex: 0 0 auto;
       padding: 5px 9px;
-      border: 1px solid #d8e2da;
+      border: 1px solid var(--green-line);
       border-radius: 999px;
-      color: var(--green);
-      background: rgba(238, 245, 240, 0.82);
+      color: var(--accent-ink);
+      background: rgba(var(--green-rgb), 0.82);
       font-size: 10.5px;
       font-weight: 700;
       letter-spacing: 0.02em;
@@ -616,8 +653,8 @@
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #4c876a;
-      box-shadow: 0 0 0 3px rgba(76, 135, 106, 0.12);
+      background: var(--green);
+      box-shadow: 0 0 0 3px rgba(var(--green-rgb), 0.12);
     }
 
     .source-pill.is-loading .source-dot {
@@ -625,9 +662,9 @@
     }
 
     .source-pill.is-error {
-      color: var(--red-strong);
-      border-color: #ebcfd0;
-      background: #fff4f3;
+      color: var(--danger-ink);
+      border-color: var(--red-line);
+      background: var(--surface-soft);
     }
 
     .source-pill.is-error .source-dot {
@@ -657,8 +694,8 @@
       border: 1px solid var(--line-strong);
       border-radius: 12px;
       color: var(--ink-soft);
-      background: rgba(255, 253, 249, 0.74);
-      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.65) inset;
+      background: rgba(var(--surface-rgb), 0.74);
+      box-shadow: 0 1px 0 var(--edge) inset;
       font-size: 12.5px;
       font-weight: 650;
       cursor: pointer;
@@ -666,9 +703,9 @@
     }
 
     .refresh-btn:hover:not(:disabled) {
-      color: var(--green-dark);
-      border-color: #c5d2c7;
-      background: #fffdf9;
+      color: var(--accent-ink-strong);
+      border-color: var(--green-line);
+      background: var(--surface);
       transform: translateY(-1px);
     }
 
@@ -707,7 +744,7 @@
       flex-wrap: wrap;
       gap: 8px;
       margin: 0;
-      color: var(--green);
+      color: var(--accent-ink);
       font-size: 11.5px;
       font-weight: 750;
       letter-spacing: 0.075em;
@@ -721,12 +758,12 @@
     }
 
     .eyebrow-sep {
-      color: #a7a095;
+      color: var(--muted-weak);
       font-weight: 500;
     }
 
     .eyebrow-english {
-      color: #8c948b;
+      color: var(--muted);
       font-size: 9.5px;
       letter-spacing: 0.16em;
     }
@@ -743,7 +780,7 @@
       position: relative;
       z-index: 0;
       display: inline-block;
-      color: var(--green);
+      color: var(--accent-ink);
     }
 
     .hero-emphasis::after {
@@ -755,7 +792,7 @@
       z-index: -1;
       height: 0.24em;
       border-radius: 3px 7px 4px 8px;
-      background: #dbe7d5;
+      background: var(--green-tint);
       transform: rotate(-1.2deg);
     }
 
@@ -777,14 +814,14 @@
       max-width: 286px;
       min-height: 232px;
       padding: 24px 21px 20px;
-      border: 1px solid #e4d8c0;
+      border: 1px solid var(--orange-line);
       border-radius: 17px;
       background:
-        linear-gradient(140deg, rgba(255, 255, 255, 0.65), transparent 55%),
-        #fbf5e6;
+        linear-gradient(140deg, var(--gloss), transparent 55%),
+        var(--surface-tint);
       box-shadow:
-        0 17px 38px -28px rgba(71, 55, 28, 0.48),
-        0 2px 0 rgba(255, 255, 255, 0.8) inset;
+        0 17px 38px -28px rgba(var(--shadow-rgb), 0.48),
+        0 2px 0 var(--edge) inset;
       transform: rotate(-1.35deg);
       transition: background 240ms ease, border-color 240ms ease;
     }
@@ -793,7 +830,7 @@
       content: "";
       position: absolute;
       inset: 7px;
-      border: 1px dashed rgba(121, 104, 70, 0.17);
+      border: 1px dashed rgba(var(--shadow-rgb), 0.17);
       border-radius: 12px;
       pointer-events: none;
     }
@@ -805,31 +842,31 @@
       width: 76px;
       height: 23px;
       border-radius: 2px;
-      background: rgba(188, 202, 174, 0.82);
-      box-shadow: 0 2px 4px rgba(78, 68, 43, 0.09);
+      background: rgba(var(--green-rgb), 0.82);
+      box-shadow: 0 2px 4px rgba(var(--shadow-rgb), 0.09);
       transform: translateX(-50%) rotate(1.6deg);
       backdrop-filter: blur(2px);
     }
 
     .focus-card[data-level="overdue"] {
-      border-color: #e8c9c7;
+      border-color: var(--red-line);
       background:
-        linear-gradient(140deg, rgba(255, 255, 255, 0.62), transparent 55%),
-        #fff0ee;
+        linear-gradient(140deg, var(--gloss), transparent 55%),
+        var(--surface-soft);
     }
 
     .focus-card[data-level="urgent"] {
-      border-color: #ecd4cc;
+      border-color: var(--red-line);
       background:
-        linear-gradient(140deg, rgba(255, 255, 255, 0.62), transparent 55%),
-        #fcf2e9;
+        linear-gradient(140deg, var(--gloss), transparent 55%),
+        var(--surface-tint);
     }
 
     .focus-card[data-level="near"] {
-      border-color: #eadcc1;
+      border-color: var(--orange-line);
       background:
-        linear-gradient(140deg, rgba(255, 255, 255, 0.62), transparent 55%),
-        #fcf6e9;
+        linear-gradient(140deg, var(--gloss), transparent 55%),
+        var(--surface-tint);
     }
 
     .focus-card__head {
@@ -843,7 +880,7 @@
     }
 
     .focus-kicker {
-      color: #85775d;
+      color: var(--warn-ink);
       font-size: 9.5px;
       font-weight: 800;
       letter-spacing: 0.15em;
@@ -856,25 +893,25 @@
       padding: 3px 8px;
       border-radius: 999px;
       color: var(--muted-strong);
-      background: rgba(255, 255, 255, 0.64);
+      background: var(--chip);
       font-size: 9.5px;
       font-weight: 750;
       white-space: nowrap;
     }
 
     .mini-badge[data-level="overdue"] {
-      color: #fff;
+      color: var(--on-accent);
       background: var(--red-strong);
     }
 
     .mini-badge[data-level="urgent"] {
-      color: var(--red-strong);
-      background: #f7dddc;
+      color: var(--danger-ink);
+      background: var(--red-tint);
     }
 
     .mini-badge[data-level="near"] {
-      color: var(--orange-strong);
-      background: #f8e7cb;
+      color: var(--warn-ink);
+      background: var(--orange-tint);
     }
 
     .focus-card__body {
@@ -886,7 +923,7 @@
     .focus-course {
       display: block;
       margin-bottom: 6px;
-      color: #8a7d65;
+      color: var(--warn-ink);
       font-size: 10.5px;
       font-weight: 650;
       letter-spacing: 0.045em;
@@ -897,7 +934,7 @@
       display: -webkit-box;
       overflow: hidden;
       margin: 0;
-      color: #2f352e;
+      color: var(--ink);
       font-size: 18px;
       font-weight: 760;
       line-height: 1.5;
@@ -916,11 +953,11 @@
       gap: 10px;
       margin-top: 18px;
       padding-top: 13px;
-      border-top: 1px dashed rgba(121, 104, 70, 0.24);
+      border-top: 1px dashed rgba(var(--shadow-rgb), 0.24);
     }
 
     .focus-card__foot span {
-      color: #8a7d65;
+      color: var(--warn-ink);
       font-size: 9.5px;
       font-weight: 650;
       letter-spacing: 0.04em;
@@ -935,15 +972,15 @@
     }
 
     .focus-card[data-level="overdue"] .focus-card__foot strong {
-      color: var(--red-strong);
+      color: var(--danger-ink);
     }
 
     .focus-card[data-level="urgent"] .focus-card__foot strong {
-      color: var(--red);
+      color: var(--danger-ink);
     }
 
     .focus-card[data-level="near"] .focus-card__foot strong {
-      color: var(--orange-strong);
+      color: var(--warn-ink);
     }
 
     /* ============================================================
@@ -957,14 +994,14 @@
     }
 
     .stat {
-      --stat-color: var(--green);
+      --stat-color: var(--accent-ink);
       --stat-bg: var(--green-soft);
       position: relative;
       overflow: hidden;
       padding: 18px 19px 16px;
       border: 1px solid var(--line);
       border-radius: 19px;
-      background: rgba(255, 253, 249, 0.8);
+      background: rgba(var(--surface-rgb), 0.8);
       box-shadow: var(--shadow-sm);
       transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
     }
@@ -982,24 +1019,24 @@
     }
 
     .stat:hover {
-      border-color: #d8d1c4;
-      background: rgba(255, 253, 249, 0.96);
+      border-color: var(--line-strong);
+      background: rgba(var(--surface-rgb), 0.96);
       transform: translateY(-2px);
     }
 
     .stat--urgent {
-      --stat-color: var(--red);
+      --stat-color: var(--danger-ink);
       --stat-bg: var(--red-soft);
     }
 
     .stat--near {
-      --stat-color: var(--orange);
+      --stat-color: var(--warn-ink);
       --stat-bg: var(--orange-soft);
     }
 
     .stat--overdue {
-      --stat-color: var(--red-strong);
-      --stat-bg: #f8e3e3;
+      --stat-color: var(--danger-ink);
+      --stat-bg: var(--red-soft);
     }
 
     .stat-top {
@@ -1055,13 +1092,13 @@
 
     .stat-foot {
       margin: 11px 0 0;
-      color: #90968e;
+      color: var(--muted);
       font-size: 10.5px;
       letter-spacing: 0.01em;
     }
 
     .stat.is-zero .stat-number strong {
-      color: #b9b3a6;
+      color: var(--muted-weak);
     }
 
     .stat.is-zero .stat-symbol {
@@ -1081,9 +1118,9 @@
        ============================================================ */
     .board {
       overflow: hidden;
-      border: 1px solid rgba(219, 212, 199, 0.88);
+      border: 1px solid rgba(var(--surface-rgb), 0.88);
       border-radius: var(--radius-lg);
-      background: rgba(255, 253, 249, 0.84);
+      background: rgba(var(--surface-rgb), 0.84);
       box-shadow: var(--shadow-md);
       backdrop-filter: blur(10px);
     }
@@ -1116,9 +1153,9 @@
       align-items: center;
       min-height: 23px;
       padding: 3px 9px;
-      border: 1px solid #dce5dd;
+      border: 1px solid var(--green-line);
       border-radius: 999px;
-      color: var(--green);
+      color: var(--accent-ink);
       background: var(--green-soft);
       font-size: 10.5px;
       font-weight: 750;
@@ -1144,7 +1181,7 @@
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      color: #81887f;
+      color: var(--muted);
       font-size: 10px;
       font-weight: 600;
       white-space: nowrap;
@@ -1154,12 +1191,12 @@
       width: 7px;
       height: 7px;
       border-radius: 50%;
-      background: #b7c0b7;
+      background: var(--green-tint);
     }
 
     .legend-dot--overdue {
       background: var(--red-strong);
-      box-shadow: 0 0 0 2px rgba(141, 31, 44, 0.11);
+      box-shadow: 0 0 0 2px rgba(var(--red-strong-rgb), 0.11);
     }
 
     .legend-dot--urgent {
@@ -1181,10 +1218,10 @@
       gap: 11px;
       margin: 14px 17px 0;
       padding: 12px 13px;
-      border: 1px solid #ebcfd0;
+      border: 1px solid var(--red-line);
       border-radius: 13px;
-      background: #fff5f4;
-      color: var(--red-strong);
+      background: var(--surface-soft);
+      color: var(--danger-ink);
     }
 
     .alert-icon {
@@ -1194,7 +1231,7 @@
       width: 27px;
       height: 27px;
       border-radius: 8px;
-      background: #f9dfe0;
+      background: var(--red-tint);
     }
 
     .alert-icon .icon {
@@ -1215,7 +1252,7 @@
 
     .alert-copy p {
       margin: 2px 0 0;
-      color: #8b4b51;
+      color: var(--danger-ink);
       font-size: 11px;
       line-height: 1.55;
       overflow-wrap: anywhere;
@@ -1224,17 +1261,17 @@
     .alert-retry {
       flex: 0 0 auto;
       padding: 5px 10px;
-      border: 1px solid #e3bfc0;
+      border: 1px solid var(--red-line);
       border-radius: 8px;
-      color: var(--red-strong);
-      background: #fffaf9;
+      color: var(--danger-ink);
+      background: var(--surface);
       font-size: 11px;
       font-weight: 700;
       cursor: pointer;
     }
 
     .alert-retry:hover {
-      background: #fff;
+      background: var(--surface);
     }
 
     /* ---------- 分组 ---------- */
@@ -1270,18 +1307,18 @@
     }
 
     .group-title--overdue {
-      color: var(--red-strong);
+      color: var(--danger-ink);
     }
 
     .group-meta {
-      color: #979d94;
+      color: var(--muted);
       font-size: 10px;
       letter-spacing: 0.01em;
       text-align: right;
     }
 
     .group-meta--overdue {
-      color: #a65b62;
+      color: var(--danger-ink);
       font-weight: 650;
     }
 
@@ -1292,7 +1329,7 @@
 
     /* ---------- 作业卡片 ---------- */
     .task {
-      --accent: #cbd4cb;
+      --accent: var(--green-line);
       --accent-soft: transparent;
       position: relative;
       display: grid;
@@ -1303,7 +1340,7 @@
       border: 1px solid var(--line);
       border-radius: 16px;
       background: var(--surface);
-      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+      box-shadow: 0 1px 0 var(--edge) inset;
       transition:
         transform 180ms ease,
         border-color 180ms ease,
@@ -1325,38 +1362,38 @@
     }
 
     .task:hover {
-      border-color: #d5cec0;
-      box-shadow: 0 8px 24px -21px rgba(54, 47, 32, 0.5);
+      border-color: var(--line-strong);
+      box-shadow: 0 8px 24px -21px rgba(var(--shadow-rgb), 0.5);
       transform: translateY(-1px);
     }
 
     .task--overdue {
       --accent: var(--red-strong);
-      border-color: #e9cbcb;
+      border-color: var(--red-line);
       background:
-        linear-gradient(102deg, #fff3f1 0%, #fffaf7 74%),
+        linear-gradient(102deg, var(--surface-soft) 0%, var(--surface-soft) 74%),
         var(--surface);
-      box-shadow: 0 5px 22px -19px rgba(141, 31, 44, 0.62);
+      box-shadow: 0 5px 22px -19px rgba(var(--red-strong-rgb), 0.62);
     }
 
     .task--urgent {
       --accent: var(--red);
-      border-color: #efd5d2;
+      border-color: var(--red-line);
       background:
-        linear-gradient(102deg, #fff7f5 0%, #fffdfb 74%),
+        linear-gradient(102deg, var(--surface-soft) 0%, var(--surface) 74%),
         var(--surface);
     }
 
     .task--near {
       --accent: var(--orange);
-      border-color: #efdfc6;
+      border-color: var(--orange-line);
       background:
-        linear-gradient(102deg, #fffaf1 0%, #fffdfb 74%),
+        linear-gradient(102deg, var(--surface-soft) 0%, var(--surface) 74%),
         var(--surface);
     }
 
     .task--normal {
-      --accent: #b9c9be;
+      --accent: var(--green-tint);
     }
 
     .task.is-removing {
@@ -1377,10 +1414,10 @@
       width: 25px;
       height: 25px;
       padding: 0;
-      border: 1.5px solid #c9c3b7;
+      border: 1.5px solid var(--line-strong);
       border-radius: 8px;
       color: transparent;
-      background: rgba(255, 255, 255, 0.72);
+      background: rgba(var(--surface-rgb), 0.9);
       cursor: pointer;
       transition: color 160ms ease, border-color 160ms ease, background 160ms ease, transform 160ms ease;
     }
@@ -1392,16 +1429,16 @@
     }
 
     .task-check:hover:not(:disabled) {
-      color: var(--green);
-      border-color: #8eaa99;
+      color: var(--accent-ink);
+      border-color: var(--green-line);
       background: var(--green-soft);
       transform: scale(1.06);
     }
 
     .task--overdue .task-check:hover:not(:disabled) {
-      color: var(--red-strong);
-      border-color: #d7a4a7;
-      background: #fbe5e5;
+      color: var(--danger-ink);
+      border-color: var(--red-line);
+      background: var(--red-tint);
     }
 
     .task-check:disabled {
@@ -1409,8 +1446,8 @@
     }
 
     .task-check.is-saving {
-      color: var(--green);
-      border-color: #a7bcae;
+      color: var(--accent-ink);
+      border-color: var(--green-line);
       background: var(--green-soft);
     }
 
@@ -1439,10 +1476,10 @@
       gap: 5px;
       max-width: 100%;
       padding: 3px 8px;
-      border: 1px solid #e7e1d5;
+      border: 1px solid var(--line);
       border-radius: 999px;
-      color: #6c766d;
-      background: #f5f1e9;
+      color: var(--ink-soft);
+      background: var(--surface-tint);
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.02em;
@@ -1455,7 +1492,7 @@
       width: 5px;
       height: 5px;
       border-radius: 50%;
-      background: #7e9886;
+      background: var(--green);
     }
 
     .status-pill {
@@ -1472,19 +1509,19 @@
     }
 
     .status-pill--overdue {
-      color: #fff;
+      color: var(--on-accent);
       background: var(--red-strong);
-      box-shadow: 0 2px 7px -4px rgba(141, 31, 44, 0.75);
+      box-shadow: 0 2px 7px -4px rgba(var(--red-strong-rgb), 0.75);
     }
 
     .status-pill--urgent {
-      color: var(--red-strong);
-      background: #f9dfe0;
+      color: var(--danger-ink);
+      background: var(--red-tint);
     }
 
     .status-pill--near {
-      color: var(--orange-strong);
-      background: #fbe9cf;
+      color: var(--warn-ink);
+      background: var(--orange-tint);
     }
 
     .status-dot {
@@ -1495,7 +1532,7 @@
     }
 
     .status-pill--overdue .status-dot {
-      background: #fff;
+      background: var(--surface);
       box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.16);
     }
 
@@ -1505,7 +1542,7 @@
 
     .task-title {
       margin: 0;
-      color: #27312b;
+      color: var(--ink);
       font-size: 15.5px;
       font-weight: 730;
       line-height: 1.46;
@@ -1517,7 +1554,7 @@
       display: -webkit-box;
       overflow: hidden;
       margin: 4px 0 0;
-      color: #7d847b;
+      color: var(--muted);
       font-size: 12px;
       line-height: 1.65;
       -webkit-line-clamp: 2;
@@ -1530,8 +1567,8 @@
       margin-right: 5px;
       padding: 0 4px;
       border-radius: 3px;
-      color: #8e897d;
-      background: #f3eee4;
+      color: var(--muted-weak);
+      background: var(--surface-tint);
       font-size: 9px;
       font-weight: 700;
       line-height: 1.65;
@@ -1559,21 +1596,21 @@
     .task-due .icon {
       width: 13px;
       height: 13px;
-      color: #929a91;
+      color: var(--muted);
     }
 
     .task-due strong {
-      color: #5d675f;
+      color: var(--ink-soft);
       font-weight: 650;
       font-variant-numeric: tabular-nums;
     }
 
     .task--overdue .task-due .icon {
-      color: #b26a70;
+      color: var(--danger-ink);
     }
 
     .task--overdue .task-due strong {
-      color: #8e4a51;
+      color: var(--danger-ink);
     }
 
     .task-side {
@@ -1586,12 +1623,12 @@
       gap: 3px;
       min-width: 116px;
       padding-left: 16px;
-      border-left: 1px dashed #e4ded2;
+      border-left: 1px dashed var(--line);
       text-align: right;
     }
 
     .countdown-label {
-      color: #969d94;
+      color: var(--muted);
       font-size: 9px;
       font-weight: 750;
       letter-spacing: 0.09em;
@@ -1608,24 +1645,24 @@
     }
 
     .task--overdue .task-side {
-      border-left-color: #edd3d3;
+      border-left-color: var(--red-line);
     }
 
     .task--overdue .countdown-label {
-      color: #ad6d73;
+      color: var(--danger-ink);
     }
 
     .task--overdue .countdown-value {
-      color: var(--red-strong);
+      color: var(--danger-ink);
       font-size: 14px;
     }
 
     .task--urgent .countdown-value {
-      color: var(--red);
+      color: var(--danger-ink);
     }
 
     .task--near .countdown-value {
-      color: var(--orange-strong);
+      color: var(--warn-ink);
     }
 
     /* ---------- 加载 / 空 / 错误 ---------- */
@@ -1641,16 +1678,16 @@
       gap: 14px;
       align-items: center;
       padding: 18px 17px 18px 16px;
-      border: 1px solid #ebe6dc;
+      border: 1px solid var(--line-soft);
       border-radius: 16px;
-      background: #fffdfa;
+      background: var(--surface);
     }
 
     .skeleton-check {
       width: 25px;
       height: 25px;
       border-radius: 8px;
-      background: #f0ece3;
+      background: var(--surface-tint);
     }
 
     .skeleton-lines {
@@ -1662,7 +1699,7 @@
     .skeleton-line {
       height: 10px;
       border-radius: 999px;
-      background: #f0ece3;
+      background: var(--surface-tint);
     }
 
     .skeleton-line--short {
@@ -1683,7 +1720,7 @@
     .skeleton-side {
       height: 12px;
       border-radius: 999px;
-      background: #f0ece3;
+      background: var(--surface-tint);
     }
 
     .skeleton-check,
@@ -1721,9 +1758,9 @@
       height: 58px;
       margin-bottom: 16px;
       border-radius: 18px;
-      color: var(--green);
+      color: var(--accent-ink);
       background: var(--green-soft);
-      box-shadow: 0 0 0 7px rgba(231, 239, 233, 0.46);
+      box-shadow: 0 0 0 7px rgba(var(--green-rgb), 0.46);
     }
 
     .state-icon .icon {
@@ -1733,9 +1770,9 @@
     }
 
     .state-card--error .state-icon {
-      color: var(--red-strong);
-      background: #fae4e4;
-      box-shadow: 0 0 0 7px rgba(250, 228, 228, 0.48);
+      color: var(--danger-ink);
+      background: var(--red-tint);
+      box-shadow: 0 0 0 7px rgba(var(--red-rgb), 0.48);
     }
 
     .state-card h3 {
@@ -1757,10 +1794,10 @@
     .state-action {
       margin-top: 18px;
       padding: 8px 14px;
-      border: 1px solid #cad6cc;
+      border: 1px solid var(--green-line);
       border-radius: 10px;
-      color: var(--green-dark);
-      background: #f7faf7;
+      color: var(--accent-ink-strong);
+      background: var(--surface-soft);
       font-size: 11.5px;
       font-weight: 700;
       cursor: pointer;
@@ -1768,7 +1805,7 @@
     }
 
     .state-action:hover {
-      background: #fff;
+      background: var(--surface);
       transform: translateY(-1px);
     }
 
@@ -1781,7 +1818,7 @@
       justify-content: space-between;
       gap: 14px;
       padding: 20px 6px 0;
-      color: #969b93;
+      color: var(--muted);
       font-size: 10px;
       line-height: 1.6;
     }
@@ -1803,9 +1840,9 @@
       padding: 11px 15px;
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 13px;
-      color: #f9fbf8;
-      background: #293a32;
-      box-shadow: 0 18px 40px -20px rgba(24, 35, 29, 0.78);
+      color: var(--surface-soft);
+      background: var(--green-dark);
+      box-shadow: 0 18px 40px -20px rgba(var(--shadow-rgb), 0.78);
       font-size: 12.5px;
       font-weight: 600;
       line-height: 1.5;
@@ -1822,7 +1859,7 @@
     }
 
     .toast--error {
-      background: #792530;
+      background: var(--red-strong);
       border-color: rgba(255, 255, 255, 0.12);
     }
 
@@ -2075,13 +2112,13 @@
         min-width: 0;
         margin-top: 5px;
         padding: 8px 0 0;
-        border-top: 1px dashed #e7e1d5;
+        border-top: 1px dashed var(--line);
         border-left: 0;
         text-align: left;
       }
 
       .task--overdue .task-side {
-        border-top-color: #ebd2d2;
+        border-top-color: var(--red-line);
         border-left: 0;
       }
 
@@ -2203,15 +2240,15 @@
       border: 1px solid var(--line);
       border-radius: 12px;
       color: var(--ink-soft);
-      background: rgba(255, 253, 249, 0.64);
+      background: rgba(var(--surface-rgb), 0.64);
       cursor: pointer;
       text-align: left;
       transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
     }
 
     .account-btn:hover {
-      border-color: #c7d3c9;
-      background: #fffdf9;
+      border-color: var(--green-line);
+      background: var(--surface);
       transform: translateY(-1px);
     }
 
@@ -2222,8 +2259,8 @@
       width: 28px;
       height: 28px;
       border-radius: 9px;
-      color: #8a948b;
-      background: #efebe2;
+      color: var(--muted);
+      background: var(--surface-tint);
       transition: color 160ms ease, background 160ms ease;
     }
 
@@ -2253,7 +2290,7 @@
     .account-sub {
       overflow: hidden;
       max-width: 118px;
-      color: #969d94;
+      color: var(--muted);
       font-size: 8.5px;
       font-weight: 600;
       letter-spacing: 0.025em;
@@ -2262,28 +2299,28 @@
     }
 
     .account-btn[data-state="connected"] {
-      border-color: #d3dfd5;
-      background: rgba(246, 250, 246, 0.84);
+      border-color: var(--green-line);
+      background: rgba(var(--green-rgb), 0.84);
     }
 
     .account-btn[data-state="connected"] .account-avatar {
-      color: #fff;
+      color: var(--on-accent);
       background: var(--green);
     }
 
     .account-btn[data-state="loading"] .account-avatar {
-      color: var(--green);
+      color: var(--accent-ink);
       background: var(--green-soft);
       animation: softPulse 1.5s ease-in-out infinite;
     }
 
     .account-btn[data-state="required"] .account-avatar {
-      color: var(--red-strong);
-      background: #fae6e5;
+      color: var(--danger-ink);
+      background: var(--red-tint);
     }
 
     .account-btn[data-state="demo"] .account-avatar {
-      color: var(--orange-strong);
+      color: var(--warn-ink);
       background: var(--orange-soft);
     }
 
@@ -2292,8 +2329,8 @@
       align-items: center;
       padding: 3px 7px;
       border-radius: 999px;
-      color: #8a8376;
-      background: #f6f2ea;
+      color: var(--muted-weak);
+      background: var(--surface-tint);
       font-size: 9.5px;
       font-weight: 650;
       letter-spacing: 0.02em;
@@ -2305,7 +2342,7 @@
       align-items: center;
       gap: 6px;
       margin: 14px 7px 2px;
-      color: #9a9f97;
+      color: var(--muted-weak);
       font-size: 9.5px;
       line-height: 1.55;
     }
@@ -2330,7 +2367,7 @@
     }
 
     .auth-dialog::backdrop {
-      background: rgba(28, 38, 32, 0.53);
+      background: rgba(var(--shadow-rgb), 0.53);
       backdrop-filter: blur(5px);
     }
 
@@ -2342,12 +2379,12 @@
       position: relative;
       max-height: calc(100vh - 34px);
       padding: 27px 27px 22px;
-      border: 1px solid #e5ded0;
+      border: 1px solid var(--line);
       border-radius: 24px;
       background:
-        radial-gradient(circle at 100% 0%, rgba(226, 236, 220, 0.8), transparent 31%),
+        radial-gradient(circle at 100% 0%, rgba(var(--green-rgb), 0.8), transparent 31%),
         var(--surface);
-      box-shadow: 0 34px 90px -30px rgba(28, 37, 31, 0.55);
+      box-shadow: 0 34px 90px -30px rgba(var(--shadow-rgb), 0.55);
       overflow: auto;
     }
 
@@ -2360,18 +2397,18 @@
       width: 30px;
       height: 30px;
       padding: 0;
-      border: 1px solid #e7e1d5;
+      border: 1px solid var(--line);
       border-radius: 9px;
-      color: #8d948c;
-      background: rgba(255, 253, 249, 0.8);
+      color: var(--muted);
+      background: rgba(var(--surface-rgb), 0.8);
       cursor: pointer;
       transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
     }
 
     .auth-close:hover {
       color: var(--ink);
-      border-color: #d3cbbc;
-      background: #fff;
+      border-color: var(--line-strong);
+      background: var(--surface);
     }
 
     .auth-close .icon {
@@ -2393,11 +2430,11 @@
       width: 43px;
       height: 43px;
       border-radius: 13px;
-      color: #fff;
+      color: var(--on-accent);
       background:
         linear-gradient(145deg, rgba(255, 255, 255, 0.14), transparent 50%),
         var(--green);
-      box-shadow: 0 10px 20px -15px rgba(35, 68, 56, 0.9);
+      box-shadow: 0 10px 20px -15px rgba(var(--green-dark-rgb), 0.9);
     }
 
     .auth-mark .icon {
@@ -2408,7 +2445,7 @@
 
     .auth-eyebrow {
       margin: 1px 0 4px;
-      color: #8c948b;
+      color: var(--muted);
       font-size: 8.5px;
       font-weight: 800;
       letter-spacing: 0.17em;
@@ -2435,10 +2472,10 @@
       gap: 8px;
       margin-top: 13px;
       padding: 8px 10px;
-      border: 1px solid #dce7de;
+      border: 1px solid var(--green-line);
       border-radius: 10px;
-      color: var(--green-dark);
-      background: #f2f8f3;
+      color: var(--accent-ink-strong);
+      background: var(--surface-soft);
       font-size: 10.5px;
       font-weight: 650;
     }
@@ -2448,8 +2485,8 @@
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #4c876a;
-      box-shadow: 0 0 0 3px rgba(76, 135, 106, 0.12);
+      background: var(--green);
+      box-shadow: 0 0 0 3px rgba(var(--green-rgb), 0.12);
     }
 
     .auth-form {
@@ -2464,7 +2501,7 @@
     }
 
     .auth-field > span:first-child {
-      color: #6f786f;
+      color: var(--ink-soft);
       font-size: 10px;
       font-weight: 750;
       letter-spacing: 0.045em;
@@ -2478,23 +2515,23 @@
       width: 100%;
       min-height: 43px;
       padding: 10px 12px;
-      border: 1px solid #ddd6c8;
+      border: 1px solid var(--line);
       border-radius: 11px;
       color: var(--ink);
-      background: #fffefa;
+      background: var(--surface);
       font-size: 13px;
       outline: none;
       transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
     }
 
     .auth-input::placeholder {
-      color: #b0ada3;
+      color: var(--muted-weak);
     }
 
     .auth-input:focus {
-      border-color: #91aa9a;
-      background: #fff;
-      box-shadow: 0 0 0 3px rgba(47, 91, 76, 0.09);
+      border-color: var(--green-line);
+      background: var(--surface);
+      box-shadow: 0 0 0 3px rgba(var(--green-rgb), 0.09);
     }
 
     .auth-input--password {
@@ -2508,7 +2545,7 @@
       padding: 4px 5px;
       border: 0;
       border-radius: 5px;
-      color: #90978f;
+      color: var(--muted);
       background: transparent;
       font-size: 9.5px;
       font-weight: 650;
@@ -2517,7 +2554,7 @@
     }
 
     .password-toggle:hover {
-      color: var(--green-dark);
+      color: var(--accent-ink-strong);
       background: var(--green-soft);
     }
 
@@ -2532,10 +2569,10 @@
       display: block;
       width: 116px;
       height: 43px;
-      border: 1px solid #ddd6c8;
+      border: 1px solid var(--line);
       border-radius: 9px;
       object-fit: cover;
-      background: #f4f0e8;
+      background: var(--surface-tint);
       cursor: pointer;
     }
 
@@ -2544,7 +2581,7 @@
       align-items: flex-start;
       gap: 8px;
       margin-top: 1px;
-      color: #626d64;
+      color: var(--ink-soft);
       font-size: 10.5px;
       line-height: 1.6;
       cursor: pointer;
@@ -2555,7 +2592,7 @@
       width: 15px;
       height: 15px;
       margin: 1px 0 0;
-      accent-color: var(--green);
+      accent-color: var(--accent-ink);
       flex: 0 0 auto;
     }
 
@@ -2565,10 +2602,10 @@
       gap: 6px;
       margin: 0;
       padding: 9px 10px;
-      border: 1px solid #e7e1d5;
+      border: 1px solid var(--line);
       border-radius: 9px;
-      color: #8b9189;
-      background: #faf7f0;
+      color: var(--muted);
+      background: var(--surface-soft);
       font-size: 9.5px;
       line-height: 1.65;
     }
@@ -2583,10 +2620,10 @@
     .auth-error {
       margin: 0;
       padding: 8px 10px;
-      border: 1px solid #eccfd0;
+      border: 1px solid var(--red-line);
       border-radius: 9px;
-      color: var(--red-strong);
-      background: #fff4f3;
+      color: var(--danger-ink);
+      background: var(--surface-soft);
       font-size: 10.5px;
       line-height: 1.6;
       overflow-wrap: anywhere;
@@ -2602,9 +2639,9 @@
       padding: 10px 14px;
       border: 0;
       border-radius: 11px;
-      color: #fff;
+      color: var(--on-accent);
       background: var(--green);
-      box-shadow: 0 10px 22px -16px rgba(35, 68, 56, 0.9);
+      box-shadow: 0 10px 22px -16px rgba(var(--green-dark-rgb), 0.9);
       font-size: 12.5px;
       font-weight: 750;
       cursor: pointer;
@@ -2644,7 +2681,7 @@
     .auth-footer-actions button {
       border: 0;
       padding: 2px 0;
-      color: #92998f;
+      color: var(--muted);
       background: transparent;
       font-size: 9.5px;
       font-weight: 600;
@@ -2654,12 +2691,12 @@
 
     .auth-footer-actions a:hover,
     .auth-footer-actions button:hover {
-      color: var(--green-dark);
+      color: var(--accent-ink-strong);
       text-decoration: underline;
     }
 
     .auth-logout {
-      color: #a5666b !important;
+      color: var(--danger-ink) !important;
     }
 
     @keyframes dialogIn {
@@ -2674,15 +2711,15 @@
     }
 
     .float-toggle.is-active {
-      color: #fff;
-      border-color: var(--green);
+      color: var(--on-accent);
+      border-color: var(--accent-ink);
       background: var(--green);
-      box-shadow: 0 6px 16px -12px rgba(35, 68, 56, 0.9);
+      box-shadow: 0 6px 16px -12px rgba(var(--green-dark-rgb), 0.9);
     }
 
     .float-toggle.is-active:hover:not(:disabled) {
-      color: #fff;
-      border-color: var(--green-dark);
+      color: var(--on-accent);
+      border-color: var(--accent-ink-strong);
       background: var(--green-dark);
     }
 
@@ -2740,7 +2777,366 @@
         width: 100px;
       }
     }
+
+    /* ============================================================
+       主题面板
+       ============================================================ */
+    .theme-dialog {
+      width: min(520px, calc(100vw - 30px));
+      max-height: calc(100vh - 34px);
+      margin: auto;
+      padding: 0;
+      border: 0;
+      border-radius: 24px;
+      color: var(--ink);
+      background: transparent;
+      overflow: visible;
+    }
+
+    .theme-dialog::backdrop {
+      background: rgba(var(--shadow-rgb), 0.5);
+      backdrop-filter: blur(5px);
+    }
+
+    .theme-dialog[open] .theme-panel {
+      animation: dialogIn 220ms cubic-bezier(0.2, 0.8, 0.25, 1);
+    }
+
+    .theme-panel {
+      position: relative;
+      max-height: calc(100vh - 34px);
+      padding: 25px 25px 20px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at 100% 0%, var(--green-tint), transparent 34%),
+        var(--surface);
+      box-shadow: 0 34px 90px -30px rgba(var(--shadow-rgb), 0.5);
+      overflow: auto;
+    }
+
+    .theme-mark {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 43px;
+      height: 43px;
+      border-radius: 13px;
+      color: var(--on-accent);
+      background:
+        linear-gradient(145deg, rgba(var(--green-rgb), 0.55), transparent 60%),
+        var(--green);
+      box-shadow: 0 10px 20px -15px rgba(var(--green-dark-rgb), 0.9);
+    }
+
+    .theme-mark .icon {
+      width: 20px;
+      height: 20px;
+      stroke-width: 2;
+    }
+
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .theme-card {
+      position: relative;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--surface-soft);
+      transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+    }
+
+    .theme-card__pick {
+      display: grid;
+      gap: 9px;
+      width: 100%;
+      padding: 0;
+      border: 0;
+      color: inherit;
+      background: none;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .theme-card__pick:focus-visible {
+      outline: 2px solid var(--green);
+      outline-offset: 4px;
+      border-radius: 10px;
+    }
+
+    .theme-card:hover {
+      border-color: var(--line-strong);
+      background: var(--surface);
+      transform: translateY(-1px);
+    }
+
+    .theme-card[data-active="true"] {
+      border-color: var(--accent-ink);
+      background: var(--surface);
+      box-shadow: 0 0 0 1px var(--green), 0 10px 24px -18px rgba(var(--green-dark-rgb), 0.8);
+    }
+
+    .theme-card__preview {
+      position: relative;
+      height: 46px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(var(--shadow-rgb), 0.08);
+    }
+
+    .theme-card__preview span {
+      position: absolute;
+      border-radius: 6px;
+      display: block;
+    }
+
+    .theme-card__surface {
+      left: 9px;
+      top: 10px;
+      right: 9px;
+      bottom: 10px;
+      box-shadow: 0 4px 10px -6px rgba(var(--shadow-rgb), 0.5);
+    }
+
+    .theme-card__pill {
+      left: 15px;
+      top: 19px;
+      width: 34%;
+      height: 7px;
+      opacity: 0.9;
+    }
+
+    .theme-card__dot {
+      right: 16px;
+      top: 18px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .theme-card__name {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .theme-card__meta {
+      margin: -3px 0 0;
+      color: var(--muted);
+      font-size: 10.5px;
+      line-height: 1.55;
+      min-height: 2em;
+    }
+
+    /* 自定义主题卡片右下角有删除按钮，说明文字让开这块 */
+    .theme-card[data-custom="true"] .theme-card__meta {
+      padding-right: 26px;
+    }
+
+    .theme-card__tag {
+      padding: 1px 6px;
+      border-radius: 999px;
+      color: var(--accent-ink);
+      background: var(--green-soft);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .theme-card__del {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      background: var(--surface);
+      cursor: pointer;
+      opacity: 0.45;
+      transition: opacity 150ms ease, color 150ms ease, border-color 150ms ease;
+    }
+
+    .theme-card:hover .theme-card__del,
+    .theme-card__del:focus-visible {
+      opacity: 1;
+    }
+
+    .theme-card__del:hover {
+      color: var(--danger-ink);
+      border-color: var(--red-line);
+    }
+
+    /* 二次确认态：按钮展开成「删除？」文字，再点一次才真删。 */
+    .theme-card__del[data-armed='1'] {
+      width: auto;
+      padding: 0 6px;
+      color: var(--danger-ink);
+      border-color: var(--red-line);
+      background: var(--red-soft);
+      font-size: 10px;
+      font-weight: 700;
+      opacity: 1;
+    }
+
+    .theme-card__del[data-armed='1'] .icon {
+      display: none;
+    }
+
+    .theme-card__del .icon {
+      width: 11px;
+      height: 11px;
+    }
+
+    .theme-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px dashed var(--line);
+    }
+
+    .theme-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      color: var(--ink-soft);
+      background: var(--surface);
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+    }
+
+    .theme-action:hover {
+      color: var(--accent-ink);
+      border-color: var(--green-line);
+      background: var(--green-soft);
+    }
+
+    .theme-action .icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    .theme-import {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--surface-soft);
+    }
+
+    .theme-import textarea {
+      width: 100%;
+      min-height: 108px;
+      padding: 9px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      color: var(--ink);
+      background: var(--surface);
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      resize: vertical;
+    }
+
+    .theme-import textarea:focus {
+      outline: none;
+      border-color: var(--accent-ink);
+      box-shadow: 0 0 0 3px rgba(var(--green-rgb), 0.14);
+    }
+
+    .theme-import-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 9px;
+    }
+
+    .theme-import-actions .theme-action {
+      padding: 6px 11px;
+    }
+
+    .theme-import-actions .theme-apply {
+      color: var(--on-accent);
+      border-color: var(--accent-ink);
+      background: var(--green);
+    }
+
+    .theme-import-actions .theme-apply:hover {
+      color: var(--on-accent);
+      background: var(--green-dark);
+      border-color: var(--accent-ink-strong);
+    }
+
+    .theme-error {
+      margin: 9px 0 0;
+      padding: 7px 9px;
+      border: 1px solid var(--red-line);
+      border-radius: 9px;
+      color: var(--danger-ink);
+      background: var(--red-soft);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .theme-help {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .theme-help summary {
+      cursor: pointer;
+      color: var(--muted-strong);
+    }
+
+    .theme-help pre {
+      margin: 8px 0 0;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface-tint);
+      color: var(--ink-soft);
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 10px;
+      line-height: 1.6;
+      overflow: auto;
+    }
+
+    .theme-note {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 10.5px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 560px) {
+      .theme-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
   </style>
+  <!--THEME_STYLE-->
 </head>
 
 <body>
@@ -2863,6 +3259,26 @@
       <path d="M6 6l12 12"></path>
       <path d="M18 6L6 18"></path>
     </symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24">
+      <path d="M12 3.4a8.6 8.6 0 0 0 0 17.2c1.1 0 1.7-.75 1.7-1.6 0-.85-.7-1.35-.7-2.1 0-.9.7-1.6 1.7-1.6h1.6a4.3 4.3 0 0 0 4.3-4.3c0-4.15-3.9-7.6-8.6-7.6z"></path>
+      <circle cx="7.6" cy="11.6" r="1"></circle>
+      <circle cx="10.4" cy="8.1" r="1"></circle>
+      <circle cx="14.3" cy="8.4" r="1"></circle>
+    </symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24">
+      <path d="M12 15.5V4.5"></path>
+      <path d="M8 8.2 12 4.3l4 3.9"></path>
+      <path d="M4.5 15v3.5a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5V15"></path>
+    </symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24">
+      <rect x="8.5" y="8.5" width="11" height="11" rx="2.6"></rect>
+      <path d="M15.5 5.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2"></path>
+    </symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24">
+      <path d="M4.5 7h15"></path>
+      <path d="M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"></path>
+      <path d="M6.5 7l.8 11.3A1.7 1.7 0 0 0 9 20h6a1.7 1.7 0 0 0 1.7-1.7L17.5 7"></path>
+    </symbol>
   </svg>
 
   <div class="page-shell">
@@ -2892,6 +3308,10 @@
           </span>
           <span class="last-update">最后更新 <time id="lastUpdated">—</time></span>
         </div>
+        <button class="refresh-btn theme-btn" id="themeBtn" type="button" aria-haspopup="dialog" aria-controls="themeDialog" aria-label="外观主题" title="外观主题">
+          <svg class="icon" aria-hidden="true"><use href="#i-palette"></use></svg>
+          <span>主题</span>
+        </button>
         <button class="refresh-btn float-toggle" id="floatToggle" type="button" aria-label="显示悬浮球" aria-pressed="false" title="显示悬浮球">
           <svg class="icon" aria-hidden="true"><use href="#i-pip"></use></svg>
           <span>悬浮球</span>
@@ -3077,6 +3497,78 @@
         <a href="https://lms.szu.edu.cn/user/index" target="_blank" rel="noreferrer">打开深大优课 <span aria-hidden="true">↗</span></a>
         <button class="auth-logout" id="authLogout" type="button" hidden>退出并清除登录信息</button>
       </div>
+    </div>
+  </dialog>
+
+  <dialog class="theme-dialog" id="themeDialog" aria-labelledby="themeTitle">
+    <div class="theme-panel">
+      <button class="auth-close" id="themeClose" type="button" aria-label="关闭主题面板">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+      </button>
+
+      <header class="auth-header">
+        <span class="theme-mark" aria-hidden="true"><svg class="icon"><use href="#i-palette"></use></svg></span>
+        <div>
+          <p class="auth-eyebrow">APPEARANCE / 外观</p>
+          <h2 id="themeTitle">挑一个顺眼的配色</h2>
+        </div>
+      </header>
+
+      <p class="auth-desc">
+        主题只保存在本机。选中立刻生效，主界面、悬浮球和概览卡片会一起换色。
+      </p>
+
+      <div class="theme-grid" id="themeGrid" role="list"></div>
+
+      <div class="theme-actions">
+        <button class="theme-action" id="themeImportToggle" type="button" aria-expanded="false" aria-controls="themeImportPanel">
+          <svg class="icon" aria-hidden="true"><use href="#i-upload"></use></svg>
+          <span>导入主题</span>
+        </button>
+        <button class="theme-action" id="themeCopyBtn" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+          <span>复制当前主题 JSON</span>
+        </button>
+      </div>
+
+      <div class="theme-import" id="themeImportPanel" hidden>
+        <textarea id="themeJsonInput" spellcheck="false" aria-label="主题 JSON" placeholder="粘贴主题 JSON，或点下面的「选择文件」…"></textarea>
+        <div class="theme-import-actions">
+          <button class="theme-action theme-apply" id="themeImportApply" type="button">导入并启用</button>
+          <label class="theme-action" for="themeFileInput">选择文件…</label>
+          <input id="themeFileInput" type="file" accept=".json,application/json" hidden>
+        </div>
+        <p class="theme-error" id="themeError" role="alert" hidden></p>
+        <details class="theme-help">
+          <summary>主题 JSON 怎么写？</summary>
+          <pre>{
+  "name": "樱",
+  "author": "你",
+  "description": "四月的粉色",
+  "scheme": "light",
+  "glass": "dark",
+  "vars": {
+    "--bg": "#fdf3f5",
+    "--surface": "#fffdfd",
+    "--ink": "#2a2026",
+    "--green": "#8b3f5a",
+    "--green-dark": "#6d2f45",
+    "--green-soft": "#fbe9ee",
+    "--red": "#b52d3b",
+    "--red-strong": "#8d1f2c",
+    "--red-soft": "#fcecec",
+    "--orange": "#bd650d",
+    "--orange-strong": "#9d5308",
+    "--orange-soft": "#fff2df"
+  }
+}</pre>
+        </details>
+      </div>
+
+      <p class="theme-note">
+        只写想改的变量即可，其余按 <code>scheme</code> 自动补默认值；<code>glass</code> 控制悬浮球浮层是深色还是浅色。
+        自定义主题保存在 <code>%LOCALAPPDATA%\HomeworkDesk\data\themes.json</code>。
+      </p>
     </div>
   </dialog>
 
@@ -3299,7 +3791,18 @@
         authSubmit: document.getElementById('authSubmit'),
         authSubmitLabel: document.getElementById('authSubmitLabel'),
         passwordToggle: document.getElementById('passwordToggle'),
-        authLogout: document.getElementById('authLogout')
+        authLogout: document.getElementById('authLogout'),
+        themeBtn: document.getElementById('themeBtn'),
+        themeDialog: document.getElementById('themeDialog'),
+        themeClose: document.getElementById('themeClose'),
+        themeGrid: document.getElementById('themeGrid'),
+        themeImportToggle: document.getElementById('themeImportToggle'),
+        themeImportPanel: document.getElementById('themeImportPanel'),
+        themeJsonInput: document.getElementById('themeJsonInput'),
+        themeImportApply: document.getElementById('themeImportApply'),
+        themeFileInput: document.getElementById('themeFileInput'),
+        themeError: document.getElementById('themeError'),
+        themeCopyBtn: document.getElementById('themeCopyBtn')
       };
 
       class ApiError extends Error {
@@ -4468,6 +4971,213 @@
       /* ==========================================================
          提示 / 事件
          ========================================================== */
+      /* ==========================================================
+         外观主题
+         ========================================================== */
+      const themeState = { active: '', themes: [], ready: false, pendingDelete: '', appliedKeys: [] };
+
+      function applyThemeVars(vars, scheme) {
+        const root = document.documentElement;
+        // 先把上一次内联过的令牌清掉，避免换主题后残留某个旧值。
+        (themeState.appliedKeys || []).forEach((key) => {
+          if (!vars || !(key in vars)) root.style.removeProperty(key);
+        });
+        Object.entries(vars || {}).forEach(([key, value]) => {
+          root.style.setProperty(key, value);
+        });
+        themeState.appliedKeys = Object.keys(vars || {});
+        if (scheme) root.dataset.scheme = scheme;
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta && vars && vars['--bg']) meta.setAttribute('content', vars['--bg']);
+      }
+
+      function themeCardHtml(theme) {
+        const active = theme.id === themeState.active;
+        const swatch = theme.swatch || {};
+        const preview = `
+          <span class="theme-card__preview" style="background:${escapeHtml(swatch.bg || '#ffffff')}">
+            <span class="theme-card__surface" style="background:${escapeHtml(swatch.surface || '#ffffff')}"></span>
+            <span class="theme-card__pill" style="background:${escapeHtml(swatch.ink || '#000000')};opacity:.34"></span>
+            <span class="theme-card__dot" style="background:${escapeHtml(swatch.accent || '#2f5b4c')}"></span>
+          </span>`;
+        const tags = [
+          active ? '<span class="theme-card__tag">使用中</span>' : '',
+          theme.builtin ? '' : '<span class="theme-card__tag theme-card__tag--custom">自定义</span>'
+        ].join('');
+        const remove = theme.builtin
+          ? ''
+          : (() => {
+              const armed = themeState.pendingDelete === theme.id;
+              return `<button class="theme-card__del" type="button" data-theme-delete="${escapeHtml(theme.id)}" data-armed="${armed ? '1' : '0'}" title="${armed ? '再点一次就删除' : '删除这个主题'}" aria-label="删除主题 ${escapeHtml(theme.name)}">${
+                armed
+                  ? '<span>删除？</span>'
+                  : '<svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg>'
+              }</button>`;
+            })();
+        return `
+          <div class="theme-card" role="listitem" data-active="${active}" data-custom="${theme.builtin ? 'false' : 'true'}">
+            <button class="theme-card__pick" type="button" data-theme-id="${escapeHtml(theme.id)}" aria-pressed="${active}">
+              ${preview}
+              <span class="theme-card__name">${escapeHtml(theme.name)}${tags}</span>
+              <span class="theme-card__meta">${escapeHtml(theme.description || theme.author || '')}</span>
+            </button>
+            ${remove}
+          </div>`;
+      }
+
+      function renderThemeGrid() {
+        if (!els.themeGrid) return;
+        els.themeGrid.innerHTML = themeState.themes.map(themeCardHtml).join('');
+      }
+
+      function showThemeError(message) {
+        if (!els.themeError) return;
+        if (!message) {
+          els.themeError.hidden = true;
+          setText(els.themeError, '');
+          return;
+        }
+        setText(els.themeError, message);
+        els.themeError.hidden = false;
+      }
+
+      function absorbThemePayload(payload) {
+        if (!payload || !Array.isArray(payload.themes)) return;
+        themeState.active = payload.active || themeState.active;
+        themeState.themes = payload.themes;
+        themeState.ready = true;
+        renderThemeGrid();
+      }
+
+      async function loadThemes() {
+        if (!IS_LOCAL_APP) return;
+        try {
+          const payload = await requestJSON('/api/themes');
+          applyThemeVars(payload.vars, payload.scheme);
+          absorbThemePayload(payload);
+        } catch (error) {
+          console.warn('[作业备忘] 读取主题失败：', error);
+        }
+      }
+
+      async function selectTheme(themeId) {
+        if (!IS_LOCAL_APP || !themeId || themeId === themeState.active) return;
+        const previous = themeState.active;
+        themeState.active = themeId;
+        renderThemeGrid();
+        try {
+          const payload = await requestJSON('/api/themes/active', {
+            method: 'POST',
+            body: JSON.stringify({ id: themeId })
+          });
+          applyThemeVars(payload.vars, payload.scheme);
+          absorbThemePayload(payload);
+          const theme = themeState.themes.find((item) => item.id === themeId);
+          showToast(`已切换到「${theme ? theme.name : themeId}」主题`);
+        } catch (error) {
+          themeState.active = previous;
+          renderThemeGrid();
+          showThemeError(error.message || '切换主题失败。');
+        }
+      }
+
+      async function importThemeJson(text) {
+        if (!IS_LOCAL_APP) {
+          showThemeError('导入需要在桌面版里进行。');
+          return;
+        }
+        const raw = String(text || '').trim();
+        if (!raw) {
+          showThemeError('先粘贴一段主题 JSON，或者选择一个 .json 文件。');
+          return;
+        }
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch (error) {
+          showThemeError(`JSON 解析失败：${error.message}`);
+          return;
+        }
+        try {
+          const payload = await requestJSON('/api/themes/import', {
+            method: 'POST',
+            body: JSON.stringify({ theme: parsed })
+          });
+          applyThemeVars(payload.vars, payload.scheme);
+          absorbThemePayload(payload);
+          showThemeError('');
+          if (els.themeJsonInput) els.themeJsonInput.value = '';
+          showToast(payload.message || '主题已导入');
+        } catch (error) {
+          showThemeError(error.message || '导入失败。');
+        }
+      }
+
+      async function deleteTheme(themeId) {
+        if (!IS_LOCAL_APP || !themeId) return;
+        try {
+          const payload = await requestJSON('/api/themes/delete', {
+            method: 'POST',
+            body: JSON.stringify({ id: themeId })
+          });
+          applyThemeVars(payload.vars, payload.scheme);
+          absorbThemePayload(payload);
+          showToast(payload.message || '已删除');
+        } catch (error) {
+          showThemeError(error.message || '删除失败。');
+        }
+      }
+
+      async function copyActiveTheme() {
+        if (!IS_LOCAL_APP) return;
+        try {
+          const payload = await requestJSON(`/api/themes/${encodeURIComponent(themeState.active)}`);
+          const theme = payload.theme || {};
+          const text = JSON.stringify(
+            {
+              name: theme.name,
+              author: theme.author || '',
+              description: theme.description || '',
+              scheme: theme.scheme || 'light',
+              glass: theme.glass || 'dark',
+              vars: theme.vars || {}
+            },
+            null,
+            2
+          );
+          await navigator.clipboard.writeText(text);
+          showToast('当前主题 JSON 已复制，可以改完再导入');
+        } catch (error) {
+          showThemeError(`复制失败：${error.message}`);
+        }
+      }
+
+      function openThemeDialog() {
+        if (!els.themeDialog) return;
+        showThemeError('');
+        themeState.pendingDelete = '';
+        renderThemeGrid();
+        if (els.themeImportPanel) {
+          els.themeImportPanel.hidden = true;
+          els.themeImportToggle.setAttribute('aria-expanded', 'false');
+        }
+        if (!themeState.ready) loadThemes();
+        els.themeDialog.showModal();
+      }
+
+      function closeThemeDialog() {
+        themeState.pendingDelete = '';
+        if (els.themeDialog && els.themeDialog.open) els.themeDialog.close();
+      }
+
+      function toggleThemeImport() {
+        if (!els.themeImportPanel) return;
+        const showing = els.themeImportPanel.hidden;
+        els.themeImportPanel.hidden = !showing;
+        els.themeImportToggle.setAttribute('aria-expanded', String(showing));
+        if (showing) els.themeJsonInput.focus();
+      }
+
       function showToast(message, type = 'success') {
         clearTimeout(state.toastTimer);
         setText(els.toastMessage, message);
@@ -4498,6 +5208,52 @@
         loadAssignments({ manual: true, force: true })
       );
       els.floatToggle.addEventListener('click', toggleFloatingMode);
+
+      els.themeBtn.addEventListener('click', openThemeDialog);
+      els.themeClose.addEventListener('click', closeThemeDialog);
+      els.themeDialog.addEventListener('click', (event) => {
+        if (event.target === els.themeDialog) closeThemeDialog();
+      });
+      els.themeImportToggle.addEventListener('click', toggleThemeImport);
+      els.themeImportApply.addEventListener('click', () =>
+        importThemeJson(els.themeJsonInput ? els.themeJsonInput.value : '')
+      );
+      els.themeCopyBtn.addEventListener('click', copyActiveTheme);
+      els.themeFileInput.addEventListener('change', async () => {
+        const file = els.themeFileInput.files && els.themeFileInput.files[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          if (els.themeJsonInput) els.themeJsonInput.value = text;
+          await importThemeJson(text);
+        } catch (error) {
+          showThemeError(`读取文件失败：${error.message}`);
+        } finally {
+          els.themeFileInput.value = '';
+        }
+      });
+      els.themeGrid.addEventListener('click', (event) => {
+        const removeBtn = event.target.closest('[data-theme-delete]');
+        if (removeBtn) {
+          event.preventDefault();
+          event.stopPropagation();
+          const targetId = removeBtn.dataset.themeDelete;
+          if (themeState.pendingDelete === targetId) {
+            themeState.pendingDelete = '';
+            deleteTheme(targetId);
+          } else {
+            themeState.pendingDelete = targetId;
+            renderThemeGrid();
+          }
+          return;
+        }
+        const pick = event.target.closest('[data-theme-id]');
+        if (pick) {
+          themeState.pendingDelete = '';
+          renderThemeGrid();
+          selectTheme(pick.dataset.themeId);
+        }
+      });
 
       els.accountBtn.addEventListener('click', () => openAuthDialog());
       els.authClose.addEventListener('click', closeAuthDialog);
@@ -4610,6 +5366,7 @@
       (async function boot() {
         if (IS_LOCAL_APP) {
           await fetchAuthStatus();
+          await loadThemes();
         }
         updateAccountUI();
         await loadAssignments({ initial: true });

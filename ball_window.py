@@ -41,7 +41,6 @@ clr.AddReference("System.Windows.Forms")
 from System.Drawing import (  # noqa: E402
     Bitmap,
     Color,
-    ColorTranslator,
     CopyPixelOperation,
     Font,
     FontStyle,
@@ -72,6 +71,8 @@ from System.Drawing.Drawing2D import (  # noqa: E402
 from System import IntPtr  # noqa: E402
 from System.Drawing.Imaging import PixelFormat  # noqa: E402
 from System.Drawing.Text import TextRenderingHint  # noqa: E402
+
+import themes as _themes  # noqa: E402
 
 user32 = ctypes.windll.user32
 gdi32 = ctypes.windll.gdi32
@@ -230,12 +231,11 @@ ANIM_INTERVAL_MS = 16
 ANIM_DURATION_OPEN = 0.24
 ANIM_DURATION_CLOSE = 0.17
 
-BALL_COLOR_A = "#4c8f76"
-BALL_COLOR_B = "#2b5647"
-DANGER = "#cf5b4e"
-AMBER = "#f0c04a"
-BADGE_INK = "#244a3c"
-AMBER_INK = "#4a3a08"
+# 悬浮球的配色来自主题：themes.ball_palette() 把一套主题推导成球体/角标/玻璃/
+# 文字的 ARGB 角色表，这里只负责按角色取色，不再写死任何颜色。
+DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = _themes.ball_palette(
+    _themes.builtin_theme(_themes.DEFAULT_THEME_ID) or _themes.BUILTIN_THEMES[0]
+)
 
 # 卡片设计尺寸（96 DPI 下的逻辑像素，实际按窗口 DPI 缩放）
 CARD_W = 328.0
@@ -423,10 +423,6 @@ def _setup_prototypes() -> None:
 _setup_prototypes()
 
 
-def _color(hex_text: str) -> Color:
-    return ColorTranslator.FromHtml(hex_text)
-
-
 def _rounded_doc_path(left: float, top: float, width: float, height: float, radius: float) -> GraphicsPath:
     path = GraphicsPath()
     radius = max(0.0, min(radius, width / 2.0, height / 2.0))
@@ -536,6 +532,9 @@ class BallWindow:
         self._on_menu_action = on_menu_action
         self._hover_item = -1
         self._badge_font_cache = None
+
+        # 主题调色板（初始用默认暖色，接上 AppContext 后会被 set_palette 覆盖）
+        self._pal: dict[str, tuple[int, int, int, int]] = dict(DEFAULT_PALETTE)
 
         # 动画状态
         self._animating = False
@@ -719,6 +718,38 @@ class BallWindow:
             pass
         return 0, 0, int(user32.GetSystemMetrics(0)), int(user32.GetSystemMetrics(1))
 
+    # ------------------------------------------------------------------ 主题
+    def set_palette(self, palette: dict | None) -> None:
+        """换一套悬浮球配色（线程安全：只在替换字典引用 + 通知重绘）。"""
+        if not palette:
+            palette = DEFAULT_PALETTE
+        merged = dict(DEFAULT_PALETTE)
+        merged.update({key: tuple(value) for key, value in palette.items() if len(tuple(value)) == 4})
+        with self._lock:
+            self._pal = merged
+        # 只重画，不重新拉数据：换主题不该触发一次网络请求。
+        self._post(WM_BALL_DATA)
+
+    def _pal_rgb(self, key: str) -> tuple[int, int, int]:
+        value = self._pal_rgb4(key)
+        return value[1], value[2], value[3]
+
+    def _pal_rgb4(self, key: str) -> tuple[int, int, int, int]:
+        value = tuple(self._pal.get(key) or DEFAULT_PALETTE[key])
+        if len(value) == 3:  # 容错：万一某个角色只给了 RGB
+            value = (255, value[0], value[1], value[2])
+        return int(value[0]), int(value[1]), int(value[2]), int(value[3])
+
+    def _pal_color(self, key: str, alpha: float | None = None, fade: float = 1.0) -> Color:
+        """按角色取色。``alpha`` 给定时用它乘 ``fade``，否则用调色板自带的 alpha。"""
+        base = self._pal_rgb4(key)
+        if alpha is None:
+            a = int(round(base[0] * max(0.0, min(1.0, fade))))
+        else:
+            a = int(round(alpha * max(0.0, min(1.0, fade))))
+        a = max(0, min(255, a))
+        return Color.FromArgb(a, base[1], base[2], base[3])
+
     # ------------------------------------------------------------------ 数据
     def set_snapshot(self, data: dict | None) -> None:
         payload = dict(data or {})
@@ -754,8 +785,9 @@ class BallWindow:
             self._failed = failed
             self._stats = {"today": today, "urgent": urgent, "overdue": overdue}
             if self._popup_open:
-                # 展开期间数据更新：行数固定，避免卡片高度跳变。
-                rows = self._row_count
+                # 展开期间数据更新：行数固定，避免卡片高度跳变。至少要留一行，
+                # 否则「拉数据失败」的通知会把刚展开的卡片清成一块空白。
+                rows = max(1, self._row_count)
                 self._items = (items + [{}] * rows)[:rows]
             else:
                 self._row_count = min(CARD_MAX_ROWS, len(items))
@@ -823,13 +855,15 @@ class BallWindow:
         self._apply_snapshot()
         self._row_count = max(1, min(CARD_MAX_ROWS, len(self._items)))
         self._items = (self._items + [{}] * self._row_count)[: self._row_count]
-        # 数据可能已经放了 30 秒，展开时顺手让后台刷新一次。
-        self.request_refresh()
         self._open_popup(
             "card",
             int(round(CARD_W * s)),
             int(round((CARD_HEADER + self._row_count * CARD_ROW + CARD_FOOTER) * s)),
         )
+        # 数据可能已经放了 30 秒，展开后顺手让后台刷新一次。必须排在
+        # _open_popup 之后：刷新失败会立刻回调 _apply_snapshot，早一步就会把
+        # 刚算好的行数清掉，卡片中间空一块。
+        self.request_refresh()
 
     def open_menu(self) -> None:
         """右键：原地展开操作菜单。"""
@@ -1145,12 +1179,18 @@ class BallWindow:
         shadow = GraphicsPath()
         shadow.AddEllipse(left + 1.0, top + 4.0, diameter - 2.0, diameter - 2.0)
         shadow_brush = PathGradientBrush(shadow)
-        shadow_brush.CenterColor = Color.FromArgb(92, 16, 32, 26)
-        shadow_brush.SurroundColors = [Color.FromArgb(0, 16, 32, 26)]
+        sr, sg, sb = self._pal_rgb("ball_shadow")
+        shadow_brush.CenterColor = Color.FromArgb(self._pal["ball_shadow"][0], sr, sg, sb)
+        shadow_brush.SurroundColors = [Color.FromArgb(0, sr, sg, sb)]
         g.FillPath(shadow_brush, shadow)
 
         body = RectangleF(left, top, diameter, diameter)
-        gradient = LinearGradientBrush(body, _color(BALL_COLOR_A), _color(BALL_COLOR_B), 150.0)
+        gradient = LinearGradientBrush(
+            body,
+            Color.FromArgb(*self._pal["ball_a"]),
+            Color.FromArgb(*self._pal["ball_b"]),
+            150.0,
+        )
         g.FillEllipse(gradient, body)
 
         # 左上高光
@@ -1162,7 +1202,7 @@ class BallWindow:
         highlight_brush.SurroundColors = [Color.FromArgb(0, 255, 255, 255)]
         g.FillPath(highlight_brush, highlight)
 
-        rim = Pen(Color.FromArgb(64, 255, 255, 255), 1.0)
+        rim = Pen(self._pal_color("ball_rim"), 1.0)
         g.DrawEllipse(rim, left + 0.5, top + 0.5, diameter - 1.0, diameter - 1.0)
 
         # 紧急时的呼吸环
@@ -1170,7 +1210,7 @@ class BallWindow:
             phase = (time.time() * 0.42) % 1.0
             ring_r = diameter / 2 + 2.0 + phase * 5.0
             alpha = int(125 * (1.0 - phase))
-            ring = Pen(Color.FromArgb(alpha, 207, 91, 78), 1.6)
+            ring = Pen(self._pal_color("ring", alpha), 1.6)
             cx = left + diameter / 2
             cy = top + diameter / 2
             g.DrawEllipse(ring, cx - ring_r, cy - ring_r, ring_r * 2, ring_r * 2)
@@ -1183,14 +1223,14 @@ class BallWindow:
         height = diameter * 0.38
         x = left + (diameter - width) / 2
         y = top + (diameter - height) / 2
-        pen = Pen(Color.FromArgb(245, 255, 255, 255), max(1.6, diameter * 0.026))
+        pen = Pen(self._pal_color("ball_icon"), max(1.6, diameter * 0.026))
         pen.LineJoin = LineJoin.Round
         pen.StartCap = LineCap.Round
         pen.EndCap = LineCap.Round
         path = _rounded_doc_path(x, y, width, height, width * 0.18)
         g.DrawPath(pen, path)
 
-        line_pen = Pen(Color.FromArgb(225, 255, 255, 255), max(1.4, diameter * 0.022))
+        line_pen = Pen(self._pal_color("ball_icon_soft"), max(1.4, diameter * 0.022))
         line_pen.StartCap = LineCap.Round
         line_pen.EndCap = LineCap.Round
         for index, ratio in enumerate((0.36, 0.56, 0.74)):
@@ -1200,15 +1240,22 @@ class BallWindow:
 
     def _paint_badge(self, g, total: int, urgent: int, overdue: int) -> None:
         if self._failed:
-            text, fill, ink = "!", _color(AMBER), _color(AMBER_INK)
+            text = "!"
+            fill = self._pal_color("badge_warn")
+            ink = self._pal_color("badge_warn_text")
+            white_fill = False
         elif total <= 0:
             return
         else:
             text = "99+" if total > 99 else str(total)
             if urgent + overdue > 0:
-                fill, ink = _color(DANGER), Color.White
+                fill = self._pal_color("badge_danger")
+                ink = self._pal_color("badge_danger_text")
+                white_fill = False
             else:
-                fill, ink = Color.White, _color(BADGE_INK)
+                fill = self._pal_color("badge_fill", None)
+                ink = self._pal_color("badge_text")
+                white_fill = True
 
         height = 21.0
         width = height if len(text) <= 2 else height + 9.0
@@ -1221,13 +1268,17 @@ class BallWindow:
         path.AddArc(left + width - height, top, height, height, 270, 180)
         path.CloseFigure()
 
+        br, bg, bb = self._pal_rgb("ball_shadow")
         shadow = PathGradientBrush(path)
-        shadow.CenterColor = Color.FromArgb(70, 14, 28, 22)
-        shadow.SurroundColors = [Color.FromArgb(0, 14, 28, 22)]
+        shadow.CenterColor = Color.FromArgb(70, br, bg, bb)
+        shadow.SurroundColors = [Color.FromArgb(0, br, bg, bb)]
         g.FillPath(shadow, path)
 
         g.FillPath(SolidBrush(fill), path)
-        ring = Pen(Color.FromArgb(190, 255, 255, 255) if fill != Color.White else Color.FromArgb(150, 43, 86, 71), 1.6)
+        ring = Pen(
+            self._pal_color("badge_text", 150) if white_fill else self._pal_color("badge_danger_text", 190),
+            1.6,
+        )
         g.DrawPath(ring, path)
 
         fmt = StringFormat()
@@ -1258,10 +1309,6 @@ class BallWindow:
         if not self._pop_rect:
             return 0.0, 0.0
         return float(self._win_rect[0] - self._pop_rect[0]), float(self._win_rect[1] - self._pop_rect[1])
-
-    def _rgba(self, r: int, g: int, b: int, alpha: float, fade: float = 1.0) -> Color:
-        a = int(max(0.0, min(255.0, alpha * fade)))
-        return Color.FromArgb(a, int(r), int(g), int(b))
 
     def _ui_font(self, size: float, bold: bool = False):
         cache = self.__dict__.setdefault("_fonts", {})
@@ -1308,13 +1355,13 @@ class BallWindow:
             except Exception:
                 self._log.debug("绘制卡片背景失败", exc_info=True)
 
-        # 2) 深色半透明玻璃层
+        # 2) 半透明玻璃层
         radius = min(CARD_RADIUS * s, ww / 2.0, wh / 2.0)
         shell = _rounded_doc_path(0.5, 0.5, max(1.0, ww - 1.0), max(1.0, wh - 1.0), radius)
         body = RectangleF(0.0, 0.0, float(ww), float(wh))
-        glass = LinearGradientBrush(body, Color.FromArgb(188, 27, 32, 35), Color.FromArgb(202, 15, 19, 22), 90.0)
+        glass = LinearGradientBrush(body, self._pal_color("glass_top"), self._pal_color("glass_bottom"), 90.0)
         g.FillPath(glass, shell)
-        g.DrawPath(Pen(Color.FromArgb(56, 255, 255, 255), 1.0), shell)
+        g.DrawPath(Pen(self._pal_color("glass_border"), 1.0), shell)
 
         if fade <= 0.02:
             return
@@ -1324,11 +1371,11 @@ class BallWindow:
 
         # 3) 标题 + 统计
         self._text(g, "作业备忘", self._ui_font(15.5 * s, bold=True),
-                   self._rgba(238, 245, 240, 250, fade), x0, dy + 10.0 * s,
+                   self._pal_color("title", None, fade), x0, dy + 10.0 * s,
                    cw - 32.0 * s, 22.0 * s)
         self._paint_stats(g, x0, dy + 33.0 * s, s, fade)
 
-        divider = Pen(self._rgba(255, 255, 255, 30, fade), 1.0)
+        divider = Pen(self._pal_color("divider", None, fade), 1.0)
         g.DrawLine(divider, x0, dy + 54.0 * s, x1, dy + 54.0 * s)
 
         # 4) 作业行
@@ -1339,7 +1386,7 @@ class BallWindow:
         # 5) 底部提示
         hint = "点条目打开主界面 · 点外部区域收起"
         self._text(g, hint, self._ui_font(10.5 * s),
-                   self._rgba(150, 168, 158, 210, fade),
+                   self._pal_color("hint", None, fade),
                    x0, dy + ch - 24.0 * s, cw - 32.0 * s, 16.0 * s)
 
         # 6) 收起按钮（就是原来悬浮球的位置）
@@ -1349,11 +1396,11 @@ class BallWindow:
         stats = self._stats or {}
         label_font = self._ui_font(11.0 * s)
         value_font = self._ui_font(11.0 * s, bold=True)
-        label_color = self._rgba(146, 164, 155, 220, fade)
+        label_color = self._pal_color("label", None, fade)
         chunks = [
-            ("今日到期", int(stats.get("today") or 0), self._rgba(240, 192, 74, 245, fade)),
-            ("紧急", int(stats.get("urgent") or 0), self._rgba(232, 150, 92, 245, fade)),
-            ("逾期", int(stats.get("overdue") or 0), self._rgba(224, 121, 107, 245, fade)),
+            ("今日到期", int(stats.get("today") or 0), self._pal_color("stat_today", None, fade)),
+            ("紧急", int(stats.get("urgent") or 0), self._pal_color("stat_urgent", None, fade)),
+            ("逾期", int(stats.get("overdue") or 0), self._pal_color("stat_overdue", None, fade)),
         ]
         cursor = float(x)
         for index, (label, value, color) in enumerate(chunks):
@@ -1375,19 +1422,19 @@ class BallWindow:
 
         if self._hover_row == index:
             hover = _rounded_doc_path(left, row_y, width, height, 10.0 * s)
-            g.FillPath(SolidBrush(self._rgba(255, 255, 255, 16, fade)), hover)
+            g.FillPath(SolidBrush(self._pal_color("hover", None, fade)), hover)
 
         remaining = item.get("remaining")
         overdue = bool(item.get("overdue"))
         urgent = bool(item.get("urgent"))
         if remaining is None:
-            accent = self._rgba(120, 140, 130, 150, fade)
+            accent = self._pal_color("accent_none", 150, fade)
         elif overdue:
-            accent = self._rgba(207, 91, 78, 235, fade)
+            accent = self._pal_color("accent_overdue", 235, fade)
         elif urgent:
-            accent = self._rgba(240, 192, 74, 235, fade)
+            accent = self._pal_color("accent_urgent", 235, fade)
         else:
-            accent = self._rgba(95, 138, 118, 235, fade)
+            accent = self._pal_color("accent_normal", 235, fade)
 
         # 左侧色条
         bar = _rounded_doc_path(dx + 16.0 * s, row_y + 9.0 * s, 3.0 * s, 22.0 * s, 1.5 * s)
@@ -1401,25 +1448,35 @@ class BallWindow:
         text_width = cw - 27.0 * s - 16.0 * s - 88.0 * s
         if name:
             self._text(g, name, self._ui_font(13.0 * s, bold=True),
-                       self._rgba(233, 240, 235, 245, fade),
+                       self._pal_color("text", None, fade),
                        text_left, row_y + 3.0 * s, text_width, 20.0 * s)
+        elif self._failed:
+            # 拉不到数据（最常见的是没登录）：别只留一块空白，直接说清怎么办。
+            self._text(g, "还没登录深大优课", self._ui_font(13.0 * s),
+                       self._pal_color("sub", None, fade),
+                       text_left, row_y + 4.0 * s, text_width, 20.0 * s)
         else:
             self._text(g, "暂无未完成作业", self._ui_font(13.0 * s),
-                       self._rgba(160, 178, 168, 220, fade),
+                       self._pal_color("sub", None, fade),
                        text_left, row_y + 4.0 * s, text_width, 20.0 * s)
-        sub = course or ("全部完成，休息一下吧" if not name else "")
+        if course:
+            sub = course
+        elif not name and self._failed:
+            sub = "打开主界面登录后会自动同步"
+        else:
+            sub = "全部完成，休息一下吧" if not name else ""
         if sub:
             self._text(g, sub, self._ui_font(10.5 * s),
-                       self._rgba(142, 161, 151, 205, fade),
+                       self._pal_color("hint", None, fade),
                        text_left, row_y + 24.0 * s, text_width, 16.0 * s)
 
         if time_text:
             if overdue:
-                time_color = self._rgba(224, 121, 107, 240, fade)
+                time_color = self._pal_color("accent_overdue", None, fade)
             elif urgent:
-                time_color = self._rgba(240, 192, 74, 240, fade)
+                time_color = self._pal_color("stat_today", None, fade)
             else:
-                time_color = self._rgba(157, 176, 166, 220, fade)
+                time_color = self._pal_color("hint", None, fade)
             self._text(g, time_text, self._ui_font(11.0 * s, bold=overdue or urgent), time_color,
                        dx + cw - 16.0 * s - 84.0 * s, row_y + 7.0 * s, 84.0 * s, 18.0 * s,
                        align=StringAlignment.Far, ellipsis=False)
@@ -1430,10 +1487,15 @@ class BallWindow:
     def _paint_close_button(self, g, ww: int, s: float, fade) -> None:
         cx, cy = self._close_button_center(ww, s)
         radius = 11.0 * s
-        alpha = 44 if self._hover_close else 20
-        g.FillEllipse(SolidBrush(self._rgba(255, 255, 255, alpha, fade)),
+        # 深色玻璃用「白色低透明度」做底，浅色玻璃得用实心浅底才看得见圆形。
+        solid_fill = (self._pal.get("close_fill") or DEFAULT_PALETTE["close_fill"])[0] >= 200
+        if solid_fill:
+            alpha = 250 if self._hover_close else 170
+        else:
+            alpha = 44 if self._hover_close else 20
+        g.FillEllipse(SolidBrush(self._pal_color("close_fill", alpha, fade)),
                       cx - radius, cy - radius, radius * 2, radius * 2)
-        pen = Pen(self._rgba(226, 236, 230, 205, fade), 1.5 * s)
+        pen = Pen(self._pal_color("close_ink", None, fade), 1.5 * s)
         pen.StartCap = LineCap.Round
         pen.EndCap = LineCap.Round
         arm = 3.6 * s
@@ -1482,9 +1544,15 @@ class BallWindow:
         radius = min(MENU_RADIUS * s, ww / 2.0, wh / 2.0)
         shell = _rounded_doc_path(0.5, 0.5, max(1.0, ww - 1.0), max(1.0, wh - 1.0), radius)
         body = RectangleF(0.0, 0.0, float(ww), float(wh))
-        glass = LinearGradientBrush(body, Color.FromArgb(198, 28, 33, 36), Color.FromArgb(210, 16, 20, 23), 90.0)
+        # 菜单比卡片再实一点，避免透出底下文字影响阅读
+        glass = LinearGradientBrush(
+            body,
+            self._pal_color("glass_top", 198),
+            self._pal_color("glass_bottom", 210),
+            90.0,
+        )
         g.FillPath(glass, shell)
-        g.DrawPath(Pen(Color.FromArgb(58, 255, 255, 255), 1.0), shell)
+        g.DrawPath(Pen(self._pal_color("glass_border", 58), 1.0), shell)
 
         if fade <= 0.02:
             return
@@ -1493,21 +1561,21 @@ class BallWindow:
         width = (MENU_W - MENU_PAD * 2) * s
         for index, top, height, item in self._menu_layout():
             if item.get("sep"):
-                pen = Pen(self._rgba(255, 255, 255, 30, fade), 1.0)
+                pen = Pen(self._pal_color("divider", None, fade), 1.0)
                 mid = top + height / 2.0
                 g.DrawLine(pen, left + 4 * s, mid, left + width - 4 * s, mid)
                 continue
             if self._hover_item == index:
                 hover = _rounded_doc_path(left, top + 1 * s, width, height - 2 * s, 8 * s)
-                g.FillPath(SolidBrush(self._rgba(255, 255, 255, 20, fade)), hover)
+                g.FillPath(SolidBrush(self._pal_color("hover", None, fade)), hover)
             self._paint_menu_icon(g, item.get("icon"), left + 11 * s, top + height / 2.0, s, fade,
                                   bool(item.get("danger")))
             if item.get("danger"):
-                color = self._rgba(232, 118, 105, 245, fade)
+                color = self._pal_color("menu_danger", None, fade)
             elif item.get("bold"):
-                color = self._rgba(240, 246, 242, 250, fade)
+                color = self._pal_color("title", None, fade)
             else:
-                color = self._rgba(222, 232, 226, 240, fade)
+                color = self._pal_color("text", None, fade)
             text_x = left + (11 + 17 + 10) * s
             self._text(g, item.get("label"), self._ui_font(12.5 * s, bold=bool(item.get("bold"))),
                        color, text_x, top + (height - 18 * s) / 2.0,
@@ -1515,9 +1583,9 @@ class BallWindow:
 
     def _paint_menu_icon(self, g, kind: str, x: float, cy: float, s: float, fade: float, danger: bool) -> None:
         if danger:
-            color = self._rgba(232, 118, 105, 235, fade)
+            color = self._pal_color("menu_danger", None, fade)
         else:
-            color = self._rgba(150, 172, 161, 235, fade)
+            color = self._pal_color("hint", None, fade)
         pen = Pen(color, 1.5 * s)
         pen.StartCap = LineCap.Round
         pen.EndCap = LineCap.Round

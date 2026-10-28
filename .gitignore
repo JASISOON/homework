@@ -22,16 +22,13 @@ ENV/
 htmlcov/
 
 # ====================================================== 打包与安装程序产物
-# PyInstaller：build/ 是它的工作目录，dist/ 是默认输出
+# PyInstaller：build/ 是它的工作目录，dist/ 是默认输出（含手动 mv 进去的 dist/_old/）
 build/
 dist/
 dist_build/
 dist_v*/
 *.manifest
 *.spec.bak
-
-# 手动归档的旧产物（dist/_old/ 由 mv 进去，不进版本库）
-dist/_old/
 
 # Inno Setup
 # 注意：release/ 是有意保留的交付目录（安装包 + SHA256SUMS），不要忽略它
@@ -47,6 +44,7 @@ ball-state.json
 credentials.dat
 session.dat
 prefs.json
+themes.json
 state.json
 *.db
 *.sqlite3
@@ -62,6 +60,8 @@ _probe*.py
 ~$*
 *.crdownload
 *.part
+# PrintWindow 抓帧核对主题/悬浮球用的截图
+*.bmp
 
 # ============================================================ 编辑器 / 系统
 .vscode/

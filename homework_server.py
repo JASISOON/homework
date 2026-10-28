@@ -58,9 +58,11 @@ except ImportError as exc:  # pragma: no cover
         "或在命令行执行: python -m pip install requests"
     ) from exc
 
+import themes as theme_mod
+
 
 APP_NAME = "HomeworkDesk"
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.3.1"
 APP_DIR = Path(__file__).resolve().parent
 
 
@@ -568,6 +570,7 @@ class DataStore:
         self.session_path = root / "session.dat"
         self.prefs_path = root / "prefs.json"
         self.state_path = root / "state.json"
+        self.themes_path = root / "themes.json"
 
     @staticmethod
     def _read_json(path: Path, default: Any) -> Any:
@@ -666,6 +669,23 @@ class DataStore:
     def completed_ids(self) -> set[str]:
         state = self.load_state()
         return set(state.get("completed", {}).keys())
+
+    def load_custom_themes(self) -> list[dict[str, Any]]:
+        data = self._read_json(self.themes_path, {})
+        items = data.get("custom") if isinstance(data, dict) else None
+        if not isinstance(items, list):
+            return []
+        cleaned: list[dict[str, Any]] = []
+        for raw in items:
+            try:
+                cleaned.append(theme_mod.normalize_theme(raw, keep_id=True))
+            except theme_mod.ThemeError as exc:
+                LOG.warning("跳过损坏的自定义主题：%s", exc)
+        return cleaned
+
+    def save_custom_themes(self, items: list[dict[str, Any]]) -> None:
+        payload = json.dumps({"custom": items}, ensure_ascii=False, indent=2).encode("utf-8")
+        self._atomic_write(self.themes_path, payload)
 
 
 # ============================================================================
@@ -1405,6 +1425,23 @@ class AppContext:
         self.auth = SzuAuth(self.store)
         self.started_at = now_iso()
 
+        self._theme_lock = threading.Lock()
+        self._custom_themes: list[dict[str, Any]] = self.store.load_custom_themes()
+        prefs = self.store.load_prefs()
+        stored_id = str(prefs.get("theme") or "")
+        if stored_id in {theme["id"] for theme in self.all_themes()}:
+            self._active_theme_id = stored_id
+        else:
+            # 主题被删掉、或 themes.json 里根本没有这个 id：退回默认主题并顺手纠正
+            # prefs，否则界面上会「一个都没选中」，悬浮球配色也和主界面对不上。
+            self._active_theme_id = theme_mod.DEFAULT_THEME_ID
+            if stored_id:
+                LOG.warning("主题 %s 已不存在，退回默认主题。", stored_id)
+                prefs["theme"] = self._active_theme_id
+                self.store.save_prefs(prefs)
+        # 桌面壳在启动时挂上来，用来让悬浮球跟着换色
+        self.on_theme_changed: Any = None
+
     def homework(self, force: bool = False) -> dict[str, Any]:
         payload = self.auth.get_todos(force=force)
         completed = self.store.completed_ids()
@@ -1419,6 +1456,127 @@ class AppContext:
             "completionMode": "local",
             "count": len(assignments),
         }
+
+    # ------------------------------------------------------------------ 主题
+    def all_themes(self) -> list[dict[str, Any]]:
+        return [dict(theme) for theme in theme_mod.BUILTIN_THEMES] + [
+            dict(theme) for theme in self._custom_themes
+        ]
+
+    def active_theme(self) -> dict[str, Any]:
+        for theme in self.all_themes():
+            if theme["id"] == self._active_theme_id:
+                return theme
+        fallback = theme_mod.builtin_theme(theme_mod.DEFAULT_THEME_ID)
+        assert fallback is not None
+        return dict(fallback)
+
+    @staticmethod
+    def _summary(theme: dict[str, Any]) -> dict[str, Any]:
+        v = theme["vars"]
+        return {
+            "id": theme["id"],
+            "name": theme["name"],
+            "description": theme.get("description", ""),
+            "author": theme.get("author", ""),
+            "scheme": theme.get("scheme", "light"),
+            "glass": theme.get("glass", "dark"),
+            "builtin": bool(theme.get("builtin")),
+            "swatch": {
+                "bg": v["--bg"],
+                "surface": v["--surface"],
+                "accent": v["--green"],
+                "danger": v["--red"],
+                "warn": v["--orange"],
+                "ink": v["--ink"],
+            },
+        }
+
+    def themes_payload(self) -> dict[str, Any]:
+        active = self.active_theme()
+        return {
+            "active": active["id"],
+            "scheme": active.get("scheme", "light"),
+            "version": theme_mod.SCHEMA_VERSION,
+            "vars": active["vars"],
+            "themes": [self._summary(theme) for theme in self.all_themes()],
+        }
+
+    def theme_by_id(self, theme_id: str) -> dict[str, Any] | None:
+        for theme in self.all_themes():
+            if theme["id"] == theme_id:
+                return theme
+        return None
+
+    def _notify_theme(self, theme: dict[str, Any]) -> None:
+        callback = self.on_theme_changed
+        if callback is None:
+            return
+        try:
+            callback(theme)
+        except Exception:
+            LOG.exception("应用主题到悬浮球失败")
+
+    def set_active_theme(self, theme_id: str) -> dict[str, Any]:
+        theme = self.theme_by_id(theme_id)
+        if theme is None:
+            raise theme_mod.ThemeError("找不到这个主题。")
+        with self._theme_lock:
+            self._active_theme_id = theme["id"]
+            prefs = self.store.load_prefs()
+            prefs["theme"] = theme["id"]
+            self.store.save_prefs(prefs)
+        self._notify_theme(theme)
+        return theme
+
+    def import_theme(self, raw: dict[str, Any]) -> dict[str, Any]:
+        theme = theme_mod.normalize_theme(raw)
+        with self._theme_lock:
+            # 同名同作者视为「覆盖更新」，避免导入几次堆一堆重复项
+            replaced = False
+            for index, existing in enumerate(self._custom_themes):
+                if existing["name"] == theme["name"] and existing.get("author") == theme.get("author"):
+                    theme["id"] = existing["id"]
+                    self._custom_themes[index] = theme
+                    replaced = True
+                    break
+            if not replaced:
+                if len(self._custom_themes) >= 24:
+                    raise theme_mod.ThemeError("自定义主题最多 24 个，先删掉一些再导入。")
+                self._custom_themes.append(theme)
+            self.store.save_custom_themes(self._custom_themes)
+            self._active_theme_id = theme["id"]
+            prefs = self.store.load_prefs()
+            prefs["theme"] = theme["id"]
+            self.store.save_prefs(prefs)
+        self._notify_theme(theme)
+        return theme
+
+    def delete_theme(self, theme_id: str) -> None:
+        if theme_id in theme_mod.BUILTIN_IDS:
+            raise theme_mod.ThemeError("内置主题不能删除。")
+        with self._theme_lock:
+            remaining = [t for t in self._custom_themes if t["id"] != theme_id]
+            if len(remaining) == len(self._custom_themes):
+                raise theme_mod.ThemeError("找不到这个自定义主题。")
+            self._custom_themes = remaining
+            self.store.save_custom_themes(remaining)
+            if self._active_theme_id == theme_id:
+                self._active_theme_id = theme_mod.DEFAULT_THEME_ID
+                prefs = self.store.load_prefs()
+                prefs["theme"] = theme_mod.DEFAULT_THEME_ID
+                self.store.save_prefs(prefs)
+        self._notify_theme(self.active_theme())
+
+    def theme_style_block(self) -> str:
+        """把当前主题拼成一段 <style>，在服务端注入页面，避免首屏闪一下默认色。"""
+        theme = self.active_theme()
+        vars_css = ";".join(f"{key}:{value}" for key, value in theme["vars"].items())
+        scheme = theme.get("scheme", "light")
+        return (
+            f'<style id="theme-vars">:root{{{vars_css}}}</style>'
+            f'<script>document.documentElement.dataset.scheme={json.dumps(scheme)};</script>'
+        )
 
 
 class ApiHandler(BaseHTTPRequestHandler):
@@ -1528,7 +1686,13 @@ class ApiHandler(BaseHTTPRequestHandler):
                 if not page_path.exists():
                     self._send_json(500, {"code": "MISSING_UI", "message": "找不到页面文件。"})
                     return
-                self._send_html(page_path.read_bytes())
+                body = page_path.read_bytes()
+                if page_path == APP_HTML:
+                    # 把当前主题直接写进首屏，避免页面先闪一下默认配色
+                    markup = body.decode("utf-8")
+                    markup = markup.replace("<!--THEME_STYLE-->", self.context.theme_style_block())
+                    body = markup.encode("utf-8")
+                self._send_html(body)
             except Exception as exc:
                 LOG.exception("读取页面失败")
                 self._send_json(500, {"code": "SERVER_ERROR", "message": str(exc)})
@@ -1624,6 +1788,19 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "status": self.context.auth.status(),
                     },
                 )
+            return
+
+        if path == "/api/themes":
+            self._send_json(200, self.context.themes_payload())
+            return
+
+        match = re.fullmatch(r"/api/themes/([A-Za-z0-9._-]{1,64})", path)
+        if match:
+            theme = self.context.theme_by_id(match.group(1))
+            if theme is None:
+                self._send_json(404, {"code": "NOT_FOUND", "message": "找不到这个主题。"})
+                return
+            self._send_json(200, {"theme": theme})
             return
 
         self._send_json(404, {"code": "NOT_FOUND", "message": "页面不存在。"})
@@ -1727,6 +1904,63 @@ class ApiHandler(BaseHTTPRequestHandler):
             forget = bool(data.get("forget", False))
             self.context.auth.logout(forget=forget)
             self._send_json(200, {"ok": True, "status": self.context.auth.status()})
+            return
+
+        if path == "/api/themes/active":
+            try:
+                data = self._read_json_body()
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+            try:
+                self.context.set_active_theme(str(data.get("id") or "").strip())
+            except theme_mod.ThemeError as exc:
+                self._send_json(400, {"code": "THEME_ERROR", "message": str(exc)})
+                return
+            self._send_json(200, {"ok": True, **self.context.themes_payload()})
+            return
+
+        if path == "/api/themes/import":
+            try:
+                data = self._read_json_body()
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+            raw = data.get("theme")
+            if raw is None and isinstance(data.get("vars"), dict):
+                raw = data
+            try:
+                theme = self.context.import_theme(raw if isinstance(raw, dict) else {})
+            except theme_mod.ThemeError as exc:
+                self._send_json(400, {"code": "THEME_ERROR", "message": str(exc)})
+                return
+            LOG.info("已导入主题：%s（%s）", theme["name"], theme["id"])
+            self._send_json(
+                200,
+                {
+                    "ok": True,
+                    "message": f"已导入并启用「{theme['name']}」。",
+                    "theme": theme,
+                    **self.context.themes_payload(),
+                },
+            )
+            return
+
+        if path == "/api/themes/delete":
+            try:
+                data = self._read_json_body()
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+            try:
+                self.context.delete_theme(str(data.get("id") or "").strip())
+            except theme_mod.ThemeError as exc:
+                self._send_json(400, {"code": "THEME_ERROR", "message": str(exc)})
+                return
+            self._send_json(
+                200,
+                {"ok": True, "message": "已删除该主题。", **self.context.themes_payload()},
+            )
             return
 
         match = re.fullmatch(r"/api/homework/(.+)/complete", path)

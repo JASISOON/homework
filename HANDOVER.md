@@ -1,8 +1,8 @@
 # 作业备忘 · 项目交接文档
 
 - 项目：作业备忘（Homework Desk）
-- 版本：1.2.3（2026-10-28：修复 1.2.2 引入的「悬浮球左右键全失灵」，根因是 `SetWaitableTimer` 原型被跨模块覆盖，见 7.3.7）
-- 文档更新：2026-10-27
+- 版本：1.3.1（2026-10-28：新增外观主题 + 自定义主题导入，悬浮球跟着换色，见第 2 章「外观主题」）
+- 文档更新：2026-10-28
 - 形态：Windows 桌面应用（Python + pywebview/WebView2）
 - 数据源：深圳大学优课（TronClass）`https://lms.szu.edu.cn/api/todos`
 - 目标用户：深圳大学在校学生
@@ -36,6 +36,7 @@
 - 悬浮球带未完成作业数字角标，逾期/紧急时变红并呼吸；可拖拽并把位置记在本机。
 - 主界面和悬浮球数据通过本地 API + BroadcastChannel 同步。
 - 加密凭据自动登录；会话失效时自动使用保存的凭据重新登录。
+- 外观主题：内置暖色 / 亮色 / 深色三套，可导入自定义主题，悬浮球同步换色。
 - 安装程序、桌面/开始菜单快捷方式、开机自启动、卸载程序。
 
 ### 窗口形态（2026-10 改版）
@@ -225,7 +226,8 @@ CreateWindowExW(
   再释放托盘图标、销毁窗口，`webview.start()` 返回后停服务并写退出日志。
 - 单实例：`Local\HomeworkDeskDesktopApp` 互斥体判断已运行；第二个实例改为
   `SetEvent(Local\HomeworkDeskShowMain)`，已在运行的实例收到后显示主窗口，然后
-  第二个实例直接退出（不再弹“已经在运行”）。
+  第二个实例直接退出（不再弹“已经在运行”）。两个名字都支持
+  `HOMEWORK_DESK_MUTEX_SUFFIX` 后缀，源码实例设一个后缀就能与安装版并存。
 - `SystemEvents.SessionEnding` 里直接退出，避免关机/注销被“关闭即隐藏”拦住。
 
 **隐形滚动条**
@@ -242,11 +244,49 @@ CreateWindowExW(
   - 右边缘缩放条宽 4px；滚动滑块 `right: 4px`（悬浮窗同样）向内让开这段距离，
     悬停时回到 3px。以后调滑块宽度/位置时保持这个内缩量。
 
+### 外观主题
+
+主题不是「换一套 CSS」，而是**只覆盖 CSS 自定义属性**。主界面样式表里所有颜色都收敛到
+`homework-reminder.html` 顶部 `:root` 的 46 个令牌（`--bg` / `--surface*` / `--ink*` /
+`--muted*` / `--line*` / `--green*` / `--red*` / `--orange*` / `--accent-ink*` /
+`--danger-ink` / `--warn-ink` / `--gloss` / `--edge` / `--chip` / `--glow-a|b` /
+`--*-rgb` 三元组），一套主题就是这堆令牌的一组取值。这样自定义主题最坏只是配色难看，
+不会把可读性搞崩（也不能注入任意 CSS）。
+
+- **定义**：`themes.py`
+  - `THEME_VARS`：令牌白名单 + 中文说明，导入时逐项校验（`#rrggbb` / `rgba(...)` /
+    `"12, 34, 56"` 三种格式），出现白名单外的键直接报错。
+  - `BUILTIN_THEMES`：`warm`（默认）/ `light` / `dark`，每套都写全令牌，不走派生。
+  - `normalize_theme(raw, keep_id=)`：收拾用户导入的 JSON。**最少 3 个变量**即可，
+    其余由 `_derive_vars()` 按 `scheme` 推导（浅色用 `_mix(surface, color, t)`，
+    深色用 `_lighten`）。`keep_id=True` 用于读磁盘：文件里没写 id 时按
+    `name|author` 算一个稳定摘要，否则每次启动都会随机出一个新 id，「活动主题」就对不上。
+  - `ball_palette(theme)`：推导悬浮球用的 34 个 ARGB 角色（球渐变、角标、玻璃、
+    文字、强调、关闭按钮、菜单）。强调类一律用 `--accent-ink` / `--danger-ink` /
+    `--warn-ink` 这类「ink 版」令牌，因为 `--red` / `--orange` 在深色主题里是
+    「深底上的底色调」，直接当文字色会糊。
+  - `glass` 字段（`dark` / `light`）决定悬浮球概览卡片和右键菜单的玻璃层是深还是浅，
+    浅色玻璃会把文字整体切成深色。
+- **首屏防闪色**：`homework_server.py` 返回 HTML 时把
+  `<style id="theme-vars">:root{...}</style>` 注入到 `<!--THEME_STYLE-->` 占位处
+  （外加一行 `document.documentElement.dataset.scheme = ...`）。页面还没执行 JS
+  就已经是对的颜色，不会先闪一下暖色再变深色。
+- **前端切换**：`applyThemeVars()` 用 `root.style.setProperty` 覆盖，并先清掉上一次
+  内联过的令牌（`themeState.appliedKeys`），避免换主题后残留某个旧值。
+- **存储**：活动主题 id 存 `prefs.json` 的 `theme`；自定义主题存 `themes.json` 的
+  `custom` 数组（上限 24 个，同名同作者再导入算覆盖更新）。
+- **悬浮球同步**：`AppContext.on_theme_changed` 由 `desktop_app.py` 挂成
+  `_apply_theme_to_ball()` → `BallWindow.set_palette(themes.ball_palette(theme))`，
+  后者只换一个 dict 引用再投一次 `WM_BALL_DATA` 重绘（不重新拉数据，换主题不该发请求）。
+- **启动兜底**：`prefs` 里的主题 id 找不到（主题被删、手改过文件）时，`AppContext`
+  退回默认暖色并把 `prefs` 纠正掉，避免「一个都没选中」。
+
 ### 关键文件
 
 | 文件 | 责任 |
 | --- | --- |
 | `desktop_app.py` | 桌面入口；无边框主窗口；标题栏桥接、缩放、DWM 圆角；悬浮球的生命周期、位置持久化、角标数据；托盘图标与自绘右键菜单；单实例与唤回；退出清理 |
+| `themes.py` | 主题定义与派生：内置三套主题、`normalize_theme()` 校验、`ball_palette()` 悬浮球调色板 |
 | `ball_window.py` | 悬浮球 / 右键菜单 / 概览卡片：同一个原生分层窗口（`WS_EX_LAYERED`）+ GDI+ 绘制，`UpdateLayeredWindow` 逐像素透明，自绘圆球/阴影/图标/角标；展开动画（`SetWindowPos` 缓动）、截屏虚化、命中与收起 |
 | `shrink_anim.py` | 收起主窗口的「吸进悬浮球」动画：抓一帧窗口画面（`PrintWindow` 优先，屏幕截图兜底），用分层窗口 `UpdateLayeredWindow` 按 `easeInQuad` 逐帧缩到球的位置并淡出；`_FrameClock` 提供 16 ms 高精度节拍 |
 | `homework_server.py` | 本地 HTTP API、登录、DPAPI、TronClass 数据归一化、完成状态 |
@@ -408,7 +448,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 输出：
 
 - `dist\HomeworkDesk\HomeworkDesk.exe`：便携版程序目录
-- `..\version\作业备忘-安装程序-1.2.3.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
+- `..\version\作业备忘-安装程序-1.3.1.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
 
 ### 5.3 单独构建
 
@@ -439,12 +479,12 @@ py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 构建产物落在仓库外的 `..\version\`，仓库里**只保留当前版本**的安装包：
 
 ```powershell
-# 1. 构建，输出 ..\version\作业备忘-安装程序-1.2.3.exe
+# 1. 构建，输出 ..\version\作业备忘-安装程序-1.3.1.exe
 .\build.ps1
 
 # 2. 换掉 release 里的旧包
 Remove-Item .\release\*.exe
-Copy-Item ..\version\作业备忘-安装程序-1.2.3.exe .\release\
+Copy-Item ..\version\作业备忘-安装程序-1.3.1.exe .\release\
 
 # 3. 重算校验值
 #    文件名含中文，必须用 UTF-8 无 BOM 写，否则在别的编辑器里会变成 ???? 
@@ -602,6 +642,25 @@ $hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
 > 还在泵消息 → 两者都正常就开 `HOMEWORK_DESK_DEBUG=1` 看 `_wndproc` 吞掉的异常。
 > 这次的异常信息就躺在日志里：`expected LP__LARGE_INTEGER instance instead of
 > pointer to _LARGE_INTEGER`。
+
+1.3.1 主题功能验证：
+
+| 检查 | 结果 |
+| --- | --- |
+| `GET /api/themes` | 返回 warm / light / dark 三套 + 自定义主题，`active` 与 `prefs.json` 一致 |
+| `POST /api/themes/active` | 切 light / dark / 自定义全部返回 `ok`，`vars` 完整；页面无需刷新即变色 |
+| `POST /api/themes/import` | 只写 6 个变量的「樱」导入成功并自动补齐派生色；同名同作者重复导入不增项；`--bg` 写成 `red` 返回 `--bg 需要是 #rrggbb 形式的颜色。` |
+| 首屏防闪色 | 页面 HTML 内已含 `<style id="theme-vars">`，改成深色后重开窗口第一帧就是深色 |
+| 深色主题可读性 | 第一版深色下「已逾期 / 紧急」等红绿文字几乎看不见；改用 `--accent-ink` / `--danger-ink` / `--warn-ink` 后复检正常（任务卡里的「计算机视觉 / 作业 / 紧急」等 chip 也清楚） |
+| 主题面板 | 三套内置 + 自定义共 4 张卡片，当前项带绿框「使用中」，自定义项右下角删除按钮点一次变「删除？」、再点才删 |
+| 悬浮球跟随主题 | 樱（`--green: #8b3f5a`）→ 球体变粉；深色 → 球体偏深绿；运行中切换主题卡片玻璃深浅立即重绘（浅色玻璃自动切成深字） |
+| 未登录概览卡片 | 修复前中间空一块；现在显示「还没登录深大优课 / 打开主界面登录后会自动同步」 |
+| 手写 `themes.json`（无 id） | 按「名字 + 作者」生成稳定 id，重启后仍能选中；`prefs` 里 id 失效时退回 warm 并纠正 `prefs` |
+
+> 主题相关排查：界面「卡片全没了 / 一个都没选中」先看控制台有没有 JS 异常
+> （曾经因为 `themeState.appliedKeys` 没初始化，`applyThemeVars` 直接抛异常，
+> 整张面板渲染成空）；悬浮球颜色不跟随就查 `context.on_theme_changed` 是否在
+> `create_windows()` 之后被挂上（挂之前球用 `DEFAULT_PALETTE`）。
 
 未使用真实账号验证的情形：
 
@@ -819,7 +878,7 @@ $hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
 | --- | --- |
 | 远程 | `https://github.com/JASISOON/homework.git` |
 | 分支 | `main`（跟踪 `origin/main`） |
-| 当前版本 | 1.2.3 |
+| 当前版本 | 1.3.1 |
 
 ### 日常更新流程
 
@@ -838,8 +897,8 @@ git push origin main
 
 ### 在 Releases 里发布
 
-1. GitHub 仓库 → Releases → Draft a new release，tag 填 `v1.2.3`。
-2. 附件上传 `release/作业备忘-安装程序-1.2.3.exe`。
+1. GitHub 仓库 → Releases → Draft a new release，tag 填 `v1.3.1`。
+2. 附件上传 `release/作业备忘-安装程序-1.3.1.exe`。
 3. 说明直接复制 `CHANGELOG.md` 里对应版本的段落。
 4. 正文里附上 `SHA256SUMS.txt` 的哈希值。
 

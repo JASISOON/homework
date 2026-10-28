@@ -35,8 +35,9 @@ APP_TITLE = "作业备忘 · 深大优课"
 BALL_TITLE = "作业备忘 · 悬浮球"
 TRAY_TEXT = "作业备忘 · 深大优课"
 APP_VERSION = hs.APP_VERSION
-MUTEX_NAME = "Local\\HomeworkDeskDesktopApp"
-SHOW_MAIN_EVENT = "Local\\HomeworkDeskShowMain"
+# 开发时可以加 HOMEWORK_DESK_MUTEX_SUFFIX=dev，让自己起的实例和已安装版并存。
+MUTEX_NAME = "Local\\HomeworkDeskDesktopApp" + (os.environ.get("HOMEWORK_DESK_MUTEX_SUFFIX") or "")
+SHOW_MAIN_EVENT = "Local\\HomeworkDeskShowMain" + (os.environ.get("HOMEWORK_DESK_MUTEX_SUFFIX") or "")
 EVENT_MODIFY_STATE = 0x0002
 MAIN_WIDTH = 1180
 MAIN_HEIGHT = 830
@@ -1302,6 +1303,13 @@ class DesktopApplication:
         self.ball: BallWindow | None = None
         self._show_event = None
         self._exiting = False
+        # 主题变更（前端切换/导入/删除）后让悬浮球跟着换色。
+        self.context.on_theme_changed = self._apply_theme_to_ball
+
+    def _apply_theme_to_ball(self, theme: dict) -> None:
+        if self.ball is None:
+            return
+        self.ball.set_palette(hs.theme_mod.ball_palette(theme))
 
     # ------------------------------------------------------------------
     # Tray actions
@@ -1501,7 +1509,7 @@ class DesktopApplication:
             frameless=True,
             easy_drag=False,
             shadow=True,
-            background_color="#f4f1eb",
+            background_color=self.context.active_theme().get("vars", {}).get("--bg", "#f4f1eb"),
             text_select=True,
             zoomable=False,
             confirm_close=False,
@@ -1521,6 +1529,8 @@ class DesktopApplication:
         )
         if not self.ball.start():
             self.log.error("悬浮球窗口初始化失败")
+        # 悬浮球初始配色跟着当前主题走
+        self._apply_theme_to_ball(self.context.active_theme())
         threading.Thread(target=self.ball.poll_forever, name="homework-ball-data", daemon=True).start()
         self.bridge._attach(self.main, self.ball)
 
