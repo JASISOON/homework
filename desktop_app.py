@@ -28,6 +28,7 @@ import webview
 
 import homework_server as hs
 from ball_window import BallWindow
+from shrink_anim import ShrinkAnimation
 
 
 APP_TITLE = "作业备忘 · 深大优课"
@@ -39,9 +40,18 @@ SHOW_MAIN_EVENT = "Local\\HomeworkDeskShowMain"
 EVENT_MODIFY_STATE = 0x0002
 MAIN_WIDTH = 1180
 MAIN_HEIGHT = 830
+# 和 create_window(min_size=...) 保持一致，手动缩放时不得小于它。
+WINDOW_MIN_WIDTH = 900
+WINDOW_MIN_HEIGHT = 620
 BALL_SIZE = 80
 BALL_URGENT_SECONDS = 48 * 3600
+BALL_CARD_ROWS = 3
 BALL_STATE_FILE = "ball-state.json"
+# 主窗口过渡动画时长，必须和 homework-reminder.html 里的 DURATION 对上。
+MAIN_ANIM_ENTER_MS = 280
+MAIN_ANIM_LEAVE_MS = 180
+# 收起主窗口时"吸进悬浮球"的收缩动画时长（秒）。
+MAIN_SHRINK_SECONDS = 0.28
 # 悬浮球是原生分层窗口（见 ball_window.py），建好即可直接定位；
 # 这里保留一个屏幕外的兜底坐标，避免任何情况下在桌面闪一下。
 BALL_PARKING_POSITION = (-BALL_SIZE - 400, -BALL_SIZE - 400)
@@ -694,13 +704,16 @@ class TrayController:
         if self._icon is None:
             return
         try:
+            # 第 4 个参数是 ToolTipIcon 枚举，pythonnet 3 不允许隐式传 int，
+            # 必须给枚举成员，否则会抛「int can not be converted to Enum」。
+            icon_kind = self._wf.ToolTipIcon.Info if self._wf is not None else None
             self._run_on_ui(
                 self._native,
                 lambda: self._icon.ShowBalloonTip(
                     3000,
                     "作业备忘还在后台运行",
                     "点击托盘图标可以重新打开窗口。",
-                    1,  # ToolTipIcon.Info
+                    icon_kind,
                 ),
             )
         except Exception:
@@ -778,6 +791,9 @@ class DesktopBridge:
         self._ball_visible = False
         self._ball_position: tuple[int, int] | None = None
         self._drag_residual = (0.0, 0.0)
+        self._drag_thread: threading.Thread | None = None
+        self._resize_thread: threading.Thread | None = None
+        self._shrink: ShrinkAnimation | None = None
         self._shutting_down = False
         self._tray: TrayController | None = None
         self._tray_tip_shown = False
@@ -798,6 +814,26 @@ class DesktopBridge:
     # ------------------------------------------------------------------
     # Frameless window chrome
     # ------------------------------------------------------------------
+    def _play_main_anim(self, kind: str) -> None:
+        """让主窗口播一遍进场 / 退场动画（真正干活的是页面里的 CSS）。
+
+        投递到后台线程执行：pywebview 的 ``shown`` 回调可能就在 UI 线程上，
+        在 UI 线程里同步 evaluate_js 有把自己等死的风险，而动画早几十毫秒
+        或晚几十毫米都不影响观感。
+        """
+        window = self._main
+        if window is None:
+            return
+        script = "window.__appAnim && window.__appAnim('%s')" % ("leave" if kind == "leave" else "enter")
+
+        def run():
+            try:
+                window.evaluate_js(script)
+            except Exception:
+                self._log.debug("播放主窗口过渡动画失败：%s", kind, exc_info=True)
+
+        threading.Thread(target=run, daemon=True).start()
+
     def _on_window_shown(self, window):
         fit_maximized_bounds(window)
         apply_window_frame(window, maximized=False)
@@ -808,6 +844,10 @@ class DesktopBridge:
             window.resize(MAIN_WIDTH, MAIN_HEIGHT)
         except Exception:
             self._log.debug("恢复窗口尺寸失败", exc_info=True)
+        if window is self._main:
+            # 从托盘 / 悬浮球唤回时窗口是“空白”的（上次退场停在透明态），
+            # 这里补一次进场，顺便兜住任何没走到 __appAnim 的显示路径。
+            self._play_main_anim("enter")
 
     def _on_window_maximized(self, window):
         apply_window_frame(window, maximized=True)
@@ -862,53 +902,209 @@ class DesktopBridge:
                     # 悬浮球没有系统关闭按钮，这里按「收起」处理。
                     threading.Thread(target=self._hide_ball, daemon=True).start()
             elif name == "hide":
-                window.hide()
+                if window is self._main:
+                    # 主窗口直接 hide 会跳过退场动画，统一走收起流程。
+                    threading.Thread(target=self.hide_to_tray, daemon=True).start()
+                else:
+                    window.hide()
             else:
                 return {"ok": False, "maximized": False}
         except Exception:
             self._log.exception("窗口操作失败：%s %s", target, action)
         return self.window_state(target)
 
-    def window_resize(self, target: str = "main", edge: str = "") -> dict:
-        """无边框窗口没有系统缩放边框，前端按下边缘时交给系统原生缩放。"""
+    def window_drag(self, target: str = "main") -> dict:
+        """按住自绘标题栏时拖动窗口。
+
+        为什么不用 ``WM_NCLBUTTONDOWN + HTCAPTION``：frameless 窗口的
+        ``DefWindowProc`` 对这条消息不启动移动循环（实测窗口纹丝不动），而且
+        ``ReleaseCapture()`` 只对**本线程**的鼠标捕获有效 —— 拖动时捕获在
+        WebView2 的 UI 线程手里，后台线程调它等于没调。
+
+        所以自己跟：记下「光标 - 窗口原点」的偏移，之后按 ~60 fps 轮询全局光标，
+        把窗口摆到「光标 - 偏移」。这是绝对位移，DPI 缩放下也不会累积误差，
+        只用一次 IPC，不用每帧回传坐标。
+        """
         window = self._target_window(target)
         hwnd = window_hwnd(window)
-        hit_test = RESIZE_EDGES.get(str(edge or "").strip().lower())
-        if not hwnd or hit_test is None:
+        if not hwnd:
             return {"ok": False}
-        try:
-            # 必须是在按住左键的瞬间发起，系统才会进入缩放循环。
-            if not ctypes.windll.user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
-                return {"ok": False}
-            ctypes.windll.user32.ReleaseCapture()
-            ctypes.windll.user32.SendMessageW(hwnd, WM_NCLBUTTONDOWN, hit_test, 0)
+        if not ctypes.windll.user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
+            return {"ok": False}
+        worker = self._drag_thread
+        if worker is not None and worker.is_alive():
             return {"ok": True}
+        self._drag_thread = threading.Thread(
+            target=self._drag_loop, args=(hwnd,), name="homework-window-drag", daemon=True
+        )
+        self._drag_thread.start()
+        return {"ok": True}
+
+    def _drag_loop(self, hwnd: int) -> None:
+        user32 = ctypes.windll.user32
+        try:
+            point = wt.POINT()
+            if not user32.GetCursorPos(ctypes.byref(point)):
+                return
+            left, top, _, _ = window_rect(hwnd)
+            offset_x, offset_y = int(point.x) - left, int(point.y) - top
+            self._log.debug("开始拖动窗口 hwnd=%s 偏移=(%s,%s)", hwnd, offset_x, offset_y)
+            # 最多跟 30 秒，防止按键状态卡住时线程一直转。
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                if not user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
+                    break
+                if not user32.GetCursorPos(ctypes.byref(point)):
+                    break
+                user32.SetWindowPos(
+                    ctypes.c_void_p(hwnd),
+                    None,
+                    int(point.x) - offset_x,
+                    int(point.y) - offset_y,
+                    0,
+                    0,
+                    SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+                )
+                time.sleep(0.008)
+            self._log.debug("结束拖动窗口 %s", window_rect(hwnd))
         except Exception:
-            self._log.debug("调整窗口大小失败：%s %s", target, edge, exc_info=True)
+            self._log.debug("拖动主窗口失败", exc_info=True)
+
+    def window_resize(self, target: str = "main", edge: str = "") -> dict:
+        """拖拽四边 / 四角缩放。
+
+        和 ``window_drag`` 同样的原因：frameless 窗口上 ``WM_NCLBUTTONDOWN``
+        不会启动系统缩放循环（``ReleaseCapture()`` 也只对本线程的捕获有效），
+        所以改成自己跟光标：起点记下光标与窗口矩形，之后逐帧按位移重算。
+        """
+        window = self._target_window(target)
+        hwnd = window_hwnd(window)
+        key = str(edge or "").strip().lower()
+        if not hwnd or key not in RESIZE_EDGES:
             return {"ok": False}
+        if not ctypes.windll.user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
+            return {"ok": False}
+        worker = self._resize_thread
+        if worker is not None and worker.is_alive():
+            return {"ok": True}
+        self._resize_thread = threading.Thread(
+            target=self._resize_loop, args=(hwnd, key), name="homework-window-resize", daemon=True
+        )
+        self._resize_thread.start()
+        return {"ok": True}
+
+    def _resize_loop(self, hwnd: int, edge: str) -> None:
+        user32 = ctypes.windll.user32
+        try:
+            point = wt.POINT()
+            if not user32.GetCursorPos(ctypes.byref(point)):
+                return
+            start_x, start_y = int(point.x), int(point.y)
+            left, top, right, bottom = window_rect(hwnd)
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                if not user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
+                    break
+                if not user32.GetCursorPos(ctypes.byref(point)):
+                    break
+                dx, dy = int(point.x) - start_x, int(point.y) - start_y
+                new_left, new_top, new_right, new_bottom = left, top, right, bottom
+                if "left" in edge:
+                    new_left = min(left + dx, right - WINDOW_MIN_WIDTH)
+                if "right" in edge:
+                    new_right = max(right + dx, left + WINDOW_MIN_WIDTH)
+                if "top" in edge:
+                    new_top = min(top + dy, bottom - WINDOW_MIN_HEIGHT)
+                if "bottom" in edge:
+                    new_bottom = max(bottom + dy, top + WINDOW_MIN_HEIGHT)
+                user32.SetWindowPos(
+                    ctypes.c_void_p(hwnd),
+                    None,
+                    new_left,
+                    new_top,
+                    new_right - new_left,
+                    new_bottom - new_top,
+                    SWP_NOZORDER | SWP_NOACTIVATE,
+                )
+                time.sleep(0.008)
+        except Exception:
+            self._log.debug("缩放主窗口失败", exc_info=True)
 
     # ------------------------------------------------------------------
     # Window control
     # ------------------------------------------------------------------
     def hide_to_tray(self) -> dict:
-        """收起主窗口，改为显示桌面悬浮球；进程留在后台不退出。"""
+        """收起主窗口，改为显示桌面悬浮球；进程留在后台不退出。
+
+        视觉上是「窗口被吸进悬浮球」：先抓住主窗口当前画面，用分层窗口把它
+        逐帧缩到球的位置并淡出，第一帧盖上去之后才隐藏真窗口，所以中间不会
+        闪一下桌面。
+        """
         with self._lock:
             if self._shutting_down:
                 return {"ok": False, "hidden": True}
-            if self._main:
-                try:
-                    self._main.hide()
-                except Exception:
-                    self._log.exception("收起主窗口失败")
-            self._show_ball()
+            main = self._main
+            ball = self._ball
+
+        def hide_and_show_ball() -> None:
+            with self._lock:
+                if main is not None:
+                    try:
+                        main.hide()
+                    except Exception:
+                        self._log.exception("收起主窗口失败")
+                self._show_ball()
+
+        anim = None
+        hwnd = window_hwnd(main) if main is not None else 0
+        # 已经在收起中 / 窗口本来就不可见时不要再抓帧，否则会抓出一张空白去缩放。
+        if (
+            hwnd
+            and ball is not None
+            and self._shrink is None
+            and ctypes.windll.user32.IsWindowVisible(ctypes.c_void_p(hwnd))
+        ):
+            # 先把球摆到最终位置，动画才能准确落在球上。
+            self._position_ball()
+            ball_x, ball_y = ball.position()
+            anim = ShrinkAnimation.from_window(
+                hwnd,
+                (ball_x, ball_y, BALL_SIZE, BALL_SIZE),
+                duration=MAIN_SHRINK_SECONDS,
+                log=self._log,
+            )
+        if anim is None:
+            # 抓不到画面（远程桌面 / 抓屏受限）就直接切换，功能不受影响。
+            hide_and_show_ball()
+        else:
+            self._shrink = anim
+            try:
+                anim.play(on_ready=hide_and_show_ball)
+            except Exception:
+                self._log.debug("播放收缩动画失败", exc_info=True)
+                if self._ball_visible is False:
+                    hide_and_show_ball()
+            finally:
+                self._shrink = None
+
+        with self._lock:
+            if self._shutting_down:
+                return {"ok": False, "hidden": True}
             self._log.info("主窗口已收起，悬浮球已显示，应用继续在后台运行。")
             if self._tray is not None and not self._tray_tip_shown:
                 self._tray_tip_shown = True
                 self._tray.notify_hidden()
             return {"ok": True, "hidden": True}
 
+    def _cancel_shrink(self) -> None:
+        """用户在一半又点开主窗口时，立刻让收缩动画退场。"""
+        anim = self._shrink
+        if anim is not None:
+            anim.stop()
+
     def activate_main(self) -> dict:
         """从托盘 / 悬浮球重新打开主界面。"""
+        self._cancel_shrink()
         with self._lock:
             if not self._main or self._shutting_down:
                 return {"ok": False}
@@ -919,6 +1115,8 @@ class DesktopBridge:
                 hwnd = window_hwnd(self._main)
                 if hwnd:
                     ctypes.windll.user32.SetForegroundWindow(hwnd)
+                # shown 事件不一定每次都给，这里主动补一次进场（页面侧有 300ms 去重）。
+                self._play_main_anim("enter")
             except Exception:
                 self._log.exception("显示主窗口失败")
             return {"ok": True}
@@ -1108,11 +1306,15 @@ class DesktopApplication:
     # ------------------------------------------------------------------
     # Tray actions
     # ------------------------------------------------------------------
-    def _ball_counts(self) -> tuple[int, int, int]:
-        """给悬浮球角标算数：总共未完成 / 48 小时内到期 / 已逾期。"""
+    def _ball_snapshot(self) -> dict:
+        """给悬浮球和概览卡片用的数据快照。
+
+        角标只关心数字，卡片还要最近几条最紧急的作业，所以一次算全。
+        """
         payload = self.context.homework()
-        total = urgent = overdue = 0
         now = datetime.now()
+        total = urgent = overdue = today = 0
+        items: list[dict] = []
         for item in payload.get("assignments") or []:
             if item.get("completed"):
                 continue
@@ -1120,6 +1322,7 @@ class DesktopApplication:
             try:
                 due = datetime.fromisoformat(str(item.get("dueDate")))
             except Exception:
+                items.append({"name": self._item_title(item), "course": item.get("course") or ""})
                 continue
             if due.tzinfo is not None:
                 due = due.astimezone().replace(tzinfo=None)
@@ -1128,7 +1331,67 @@ class DesktopApplication:
                 overdue += 1
             elif remaining <= BALL_URGENT_SECONDS:
                 urgent += 1
-        return total, urgent, overdue
+            if due.date() == now.date() and remaining > 0:
+                today += 1
+            items.append(
+                {
+                    "name": self._item_title(item),
+                    "course": str(item.get("course") or ""),
+                    "remaining": remaining,
+                    "urgent": remaining <= BALL_URGENT_SECONDS,
+                    "overdue": remaining <= 0,
+                }
+            )
+        items.sort(key=lambda row: row.get("remaining", 0) or 0)
+        return {
+            "total": total,
+            "urgent": urgent,
+            "overdue": overdue,
+            "today": today,
+            "items": items[:BALL_CARD_ROWS],
+            "failed": False,
+        }
+
+    @staticmethod
+    def _item_title(item: dict) -> str:
+        return str(item.get("name") or item.get("title") or "未命名作业").strip()
+
+    def _ball_menu(self) -> list[dict]:
+        """右键悬浮球弹出的菜单项（框架：以后加项只要往这里塞）。"""
+        return [
+            {"action": "open", "label": "打开主界面", "icon": "open", "bold": True},
+            {"action": "refresh", "label": "刷新数据", "icon": "refresh"},
+            {"sep": True},
+            {"action": "hide", "label": "隐藏悬浮球", "icon": "hide"},
+            {"sep": True},
+            {"action": "quit", "label": "退出作业备忘", "icon": "quit", "danger": True},
+        ]
+
+    def _ball_menu_action(self, action: str) -> None:
+        name = str(action or "").strip().lower()
+        try:
+            if name == "open":
+                self.bridge.activate_main()
+            elif name == "refresh":
+                threading.Thread(target=self._refresh_ball_now, name="ball-manual-refresh",
+                                 daemon=True).start()
+            elif name == "hide":
+                self.bridge.hide_floating()
+            elif name == "quit":
+                self._quit_from_tray()
+            else:
+                self.log.debug("未知的悬浮球菜单动作：%s", action)
+        except Exception:
+            self.log.exception("执行悬浮球菜单动作失败：%s", action)
+
+    def _refresh_ball_now(self) -> None:
+        """手动刷新：强制拉一次远端数据，再让悬浮球重新取快照。"""
+        try:
+            self.context.homework(force=True)
+        except Exception:
+            self.log.warning("手动刷新作业数据失败", exc_info=True)
+        if self.ball is not None:
+            self.ball.request_refresh()
 
     def _toggle_float_from_tray(self) -> None:
         if self.bridge._shutting_down:
@@ -1248,11 +1511,13 @@ class DesktopApplication:
             size=BALL_SIZE,
             position=(ball_x, ball_y),
             log=self.log,
-            data_provider=self._ball_counts,
-            on_click=self.bridge.activate_main,
+            data_provider=self._ball_snapshot,
+            on_open_main=self.bridge.activate_main,
             on_hide=self.bridge.hide_floating,
             on_moved=self.bridge._store_ball_state,
             clamp=clamp_ball_position,
+            menu_provider=self._ball_menu,
+            on_menu_action=self._ball_menu_action,
         )
         if not self.ball.start():
             self.log.error("悬浮球窗口初始化失败")
@@ -1266,9 +1531,11 @@ class DesktopApplication:
         self._listen_session_end()
 
         if os.environ.get("HOMEWORK_DESK_AUTOSHOW_FLOAT") == "1":
+            # 回归测试开关：走「关闭主窗口 -> 吸进悬浮球」的完整路径，
+            # 这样能覆盖收缩动画 + 悬浮球交互，和用户的真实操作一致。
             def show_float_later():
                 time.sleep(4)
-                self.bridge.toggle_floating()
+                self.bridge.hide_to_tray()
             threading.Thread(target=show_float_later, daemon=True).start()
 
         try:

@@ -1,33 +1,79 @@
-# Python
+# ============================================================== Python
 __pycache__/
 *.py[cod]
+*$py.class
 *.pyo
 *.pyd
+*.so
+
+# 虚拟环境（本项目实际用的是 %TEMP%\hd-venv，这里防手滑）
 .venv/
+.venv*/
 venv/
 env/
+ENV/
 
-# PyInstaller
+# 静态检查 / 测试缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ====================================================== 打包与安装程序产物
+# PyInstaller：build/ 是它的工作目录，dist/ 是默认输出
 build/
 dist/
+dist_build/
+dist_v*/
 *.manifest
+*.spec.bak
 
-# Inno Setup build output (release/ is intentionally kept)
+# 手动归档的旧产物（dist/_old/ 由 mv 进去，不进版本库）
+dist/_old/
+
+# Inno Setup
+# 注意：release/ 是有意保留的交付目录（安装包 + SHA256SUMS），不要忽略它
 dist_installer/
+*.iss.bak
 
-# Local runtime data / secrets
+# ============================================================ 本地运行数据
+# 运行期数据实际写在 %LOCALAPPDATA%\HomeworkDesk\data，这里只是兜底防误提交
 data/
+logs/
 *.log
+ball-state.json
 credentials.dat
 session.dat
 prefs.json
 state.json
-*.tmp
-*.bak
+*.db
+*.sqlite3
+*.db-journal
 
-# Editors / OS
+# 调试 / 临时文件
+_probe*.py
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+~$*
+*.crdownload
+*.part
+
+# ============================================================ 编辑器 / 系统
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+.history/
 .DS_Store
+.Spotlight-V100/
+.Trashes
 Thumbs.db
+ehthumbs.db
 desktop.ini
+$RECYCLE.BIN/

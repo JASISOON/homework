@@ -60,7 +60,7 @@ except ImportError as exc:  # pragma: no cover
 
 
 APP_NAME = "HomeworkDesk"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.3"
 APP_DIR = Path(__file__).resolve().parent
 
 

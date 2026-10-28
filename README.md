@@ -1,6 +1,6 @@
 # 作业备忘 · 深大优课桌面版
 
-版本：**1.2.0**
+版本：**1.2.3**（2026-10-28）
 
 一个安装在 Windows 本机的桌面程序，自动登录
 [深大优课（TronClass）](https://lms.szu.edu.cn/user/index)、同步未完成作业，并提供
@@ -15,19 +15,35 @@
 > 上图是悬浮球放大 4 倍的效果：中间是作业图标，右上角红底白字是未完成数量；
 > 有逾期或 48 小时内到期的作业时，球外会多一圈缓慢呼吸的红环。实际尺寸 80 × 80。
 
+## 目录
+
+- [环境要求](#环境要求) · [安装](#安装) · [使用](#使用)
+- 细节：[悬浮球](#悬浮球) · [窗口过渡动画](#窗口过渡动画) · [右键菜单](#悬浮球右键菜单) · [概览卡片](#悬浮球概览卡片) · [托盘图标](#托盘图标)
+- [功能](#功能) · [安全](#安全) · [已知限制](#已知限制) · [文件位置](#文件位置) · [更新与卸载](#更新--卸载)
+- [从源码运行](#从源码运行) · [重新打包](#重新打包) · [项目结构](#项目结构) · [版本记录](#版本记录)
+
+## 环境要求
+
+- Windows 10 1809 及以上或 Windows 11，64 位。
+- **Microsoft Edge WebView2 运行时**：Windows 11 和较新的 Windows 10 已自带；
+  如果启动后主界面一片空白，装一次 Evergreen 运行时即可
+  （安装程序不强制捆绑它，避免安装包再大 100 MB）。
+- 屏幕分辨率建议 1280 × 720 以上（主窗口最小尺寸 900 × 620）。
+- 安装程序只写 `%LOCALAPPDATA%`，**不需要管理员权限**。
+
 ## 安装
 
 双击运行：
 
 ```
-release\作业备忘-安装程序-1.2.0.exe
+release\作业备忘-安装程序-1.2.3.exe
 ```
 
 校验值见 `release\SHA256SUMS.txt`（`Get-FileHash <文件> -Algorithm SHA256` 对比）。
 
 安装程序会：
 
-- 安装到 `%LOCALAPPDATA%\Programs\HomeworkDesk`，不需要管理员权限。
+- 安装到 `%LOCALAPPDATA%\Programs\HomeworkDesk`。
 - 创建桌面、开始菜单快捷方式。
 - 默认创建开机启动项；如果不想开机启动，可在安装时取消勾选「开机自动启动」。
 - 不删除已有的登录数据，因此覆盖安装后会继续使用原来的登录状态。
@@ -37,10 +53,10 @@ release\作业备忘-安装程序-1.2.0.exe
 1. 双击桌面上的 **作业备忘**。
 2. 首次打开会弹窗要求登录深大统一身份认证。学号/密码只在本机处理。
 3. 登录后自动显示未完成作业。
-4. 点击主窗口右上角的 **×**（或 **悬浮球** 按钮）会把主界面收起来，桌面上出现一个 80 × 80 的
-   透明悬浮球，程序继续在后台运行。
-5. **单击** 悬浮球回到主界面；**按住拖动**可以把它挪到任何位置，松手后位置会被记住；
-   **右键** 收起悬浮球。
+4. 点击主窗口右上角的关闭按钮（或 **悬浮球** 按钮）就是把窗口「收起来」：窗口会被
+   吸进悬浮球的动画带走，桌面上留下一个 80 × 80 的透明悬浮球，程序继续在后台运行。
+5. **单击** 悬浮球原地展开一张深色毛玻璃概览卡片（今日到期 / 紧急 / 逾期数量 + 最紧急的 3 条作业）；
+   **按住拖动**可以把它挪到任何位置，松手后位置会被记住；**右键** 弹出操作菜单。
 6. 任务栏通知区域同样保留「作业备忘」托盘图标，可以从托盘重新打开或退出。
 
 ### 悬浮球
@@ -54,6 +70,43 @@ release\作业备忘-安装程序-1.2.0.exe
   松手把坐标写进 `%LOCALAPPDATA%\HomeworkDesk\data\ball-state.json`；下次显示或重启后回到原处。
 - 拖到屏幕边缘会被自动夹回工作区（不会跑到任务栏下面或屏幕外找不回来）。
 - 球上的数字每 30 秒 / 主界面数据变化时刷新，与主界面使用同一个本地 API。
+- 展开 / 收起动画跑在 **60 fps** 上：Windows 的 `WM_TIMER` 会被 15.625 ms 的系统节拍
+  量化（`SetTimer(16)` 实际是 31 ms，只有 32 fps），所以这里改用高精度可等待定时器
+  （`CreateWaitableTimerEx` + `CREATE_WAITABLE_TIMER_HIGH_RESOLUTION`）逐帧驱动，
+  帧间隔实测 16.0～16.6 ms，没有掉帧。
+- 帧时钟是**单线程 + 投递消息**：定时器线程只负责「到点了」，真正的绘制一律回到窗口
+  线程做（GDI+ 位图不能跨线程乱改）。万一高精度定时器建不出来会退回 `SetTimer`，
+  动画超过「时长 + 0.6 s」还没收尾会被强制复位 —— 时钟出故障最多让动画变糙，
+  不会出现「球看得见但点不动」的僵死状态。
+
+### 窗口过渡动画
+
+- **打开**主界面：内容整体淡入并轻轻上浮（280 ms，`cubic-bezier(.22,.68,.32,1)`），
+  由页面 CSS 做（合成层，不占 Python 渲染时间）；页面在隐藏状态下收到的请求会挂起，
+  等窗口真正可见再播。
+- **收起**主界面：窗口被「吸进」悬浮球 —— 先抓住主窗口当前画面，用一个分层窗口按
+  `easeInQuad` 缩到球的位置并淡出（280 ms，60 fps），第一帧盖上去之后才隐藏真窗口，
+  所以中间不会闪一下桌面；缩到球的尺寸时正好消失，看起来就是窗口被球收走。
+- 拖动标题栏也在这个层级实现：按下时记下「光标 − 窗口原点」的偏移，之后由桌面壳按
+  60 fps 轮询全局光标、用 `SetWindowPos` 把窗口摆到「光标 − 偏移」（绝对位移，DPI
+  缩放下不会漂），一次 IPC 走完整个拖动。
+
+### 悬浮球右键菜单
+
+![悬浮球右键菜单（放大 2 倍）](preview-menu.png)
+
+- 右键球体，球会原地展开成一张深色菜单，同样带背景虚化；再次右键 / 按 Esc / 点菜单外面收起。
+- 当前项：**打开主界面**、**刷新数据**、**隐藏悬浮球**、**退出作业备忘**（红色）。
+- 菜单项由 `DesktopApplication._ball_menu()` 提供，加一项只要往那个列表里塞一个 dict。
+
+### 悬浮球概览卡片
+
+![概览卡片（放大 2 倍）](preview-card.png)
+
+- 左键单击球体：球原地展开成 328 px 宽的深色毛玻璃卡片，右上角圆形 × 收起。
+- 内容：今日到期 / 紧急 / 逾期三个数字，以及最近到期的 3 条作业（标题、课程、剩余时间），
+  逾期红色、48 小时内琥珀色。
+- 点任意一条作业会打开主界面；点卡片外面、按 Esc 或点 × 收起，窗口变回 80 × 80 的圆球。
 
 ### 托盘图标
 
@@ -113,33 +166,85 @@ release\作业备忘-安装程序-1.2.0.exe
 - 如需彻底清除登录数据和完成记录，卸载后手动删除
   `%LOCALAPPDATA%\HomeworkDesk\data`。
 
-## 开发 / 重新打包
+## 从源码运行
 
-桌面壳使用 Python + pywebview（WebView2），界面仍是现有的单文件 HTML/CSS/JS。
+桌面壳是 Python + pywebview（WebView2），界面仍然是单文件 HTML/CSS/JS，没有前端构建步骤。
 
 ```powershell
-# 安装开发依赖
-py -3.14 -m pip install -r requirements.txt
+# 需要 Python 3.11+（开发机用的是 3.14）
+py -3.14 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 
-# 构建 EXE（输出到 dist\HomeworkDesk）
-py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
+python desktop_app.py
+```
 
-# 构建安装程序（需要 Inno Setup 6，产物输出到仓库外的 ..\version）
+不装 exe 直接跑源码时，数据和日志同样落在 `%LOCALAPPDATA%\HomeworkDesk\data`，
+和安装版共用一套登录状态（两者不要同时运行，程序有单实例保护，后启动的会把已有的叫回来）。
+
+调试开关（PowerShell：`$env:HOMEWORK_DESK_DEBUG=1; python desktop_app.py`）：
+
+| 环境变量 | 作用 |
+| --- | --- |
+| `HOMEWORK_DESK_DEBUG=1` | 日志降到 DEBUG 级别，并打开 WebView2 开发者工具 |
+| `HOMEWORK_DESK_AUTOSHOW_FLOAT=1` | 启动后自动走一遍「关闭主窗口 → 吸进悬浮球」，用来回归收缩动画与球的交互 |
+| `HOMEWORK_DESK_PORT=8765` | 指定内嵌服务端口 |
+| `HOMEWORK_DESK_DATA_DIR=<路径>` | 换数据目录，测试时避免污染正式数据 |
+| `HOMEWORK_DESK_REMOTE_DEBUG=<端口>` | 打开 WebView2 远程调试端口 |
+
+## 重新打包
+
+```powershell
+# 1. 依赖装进同一个虚拟环境（PyInstaller 也在 requirements.txt 里）
+py -3.14 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# 2. 构建 EXE，产物在 dist\HomeworkDesk
+pyinstaller --noconfirm --clean HomeworkDesk.spec
+
+# 3. 构建安装程序（需 Inno Setup 6，产物输出到仓库外的 ..\version）
 & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" .\installer.iss
 ```
 
-也可以运行 `build.ps1` 一次完成两步。
+`build.ps1` 会一次跑完第 2、3 步（它假设 `py -3.14` 自己已经装好 PyInstaller）。
 
-主要文件：
+两个踩过的坑：
 
-- `desktop_app.py`：桌面主程序、无边框主窗口、悬浮球生命周期与位置记忆、托盘。
-- `homework_server.py`：内嵌本地服务、DPAPI 加密、深大登录与 TronClass 同步。
-- `homework-reminder.html`：主界面。
-- `ball_window.py`：悬浮球本体——原生分层窗口 + GDI+ 自绘，圆外逐像素透明、带拖拽与角标。
-- `ball.html` / `floating.html`：旧版悬浮球与 1.1.0 的 380 × 500 悬浮窗，已不再被引用（历史文件）。
-- `HomeworkDesk.spec`：PyInstaller 打包配置。
-- `installer.iss`：Inno Setup 安装脚本。
-- `HANDOVER.md`：项目交接与维护说明。
-- `CHANGELOG.md`：版本变更记录。
+- **`py -3.14 -m PyInstaller` 报 `No module named PyInstaller`**：说明系统 Python 里没装，
+  或者依赖装在了别的虚拟环境 —— 一定要用装好依赖的那个解释器来构建。
+- **`dist\` 被正在运行的程序占用**：PyInstaller 会因无法覆盖而失败。先把旧目录挪走
+  （`mv dist\HomeworkDesk dist\_old\...`），或者用 `--distpath dist_build` 换个输出目录。
 
-安全说明、构建流程和已知限制也见 [HANDOVER.md](HANDOVER.md)。
+## 项目结构
+
+| 文件 | 作用 |
+| --- | --- |
+| `desktop_app.py` | 桌面壳：无边框主窗口、悬浮球生命周期与位置记忆、拖动 / 缩放、托盘、单实例 |
+| `ball_window.py` | 悬浮球 + 右键菜单 + 概览卡片：原生分层窗口 + GDI+ 自绘，圆外逐像素透明 |
+| `shrink_anim.py` | 「窗口被吸进悬浮球」的收起动画：抓帧后按 `easeInQuad` 缩放淡出 |
+| `homework_server.py` | 内嵌本地服务（`127.0.0.1` 随机端口）、DPAPI 加密、深大登录与 TronClass 同步 |
+| `homework-reminder.html` | 主界面（单文件 HTML/CSS/JS） |
+| `HomeworkDesk.spec` | PyInstaller 打包配置 |
+| `installer.iss` | Inno Setup 安装脚本（产物写到 `..\version`） |
+| `build.ps1` | 一键构建 EXE + 安装程序 |
+| `requirements.txt` | 运行与打包依赖 |
+| `release/` | 交付目录：安装包与 `SHA256SUMS.txt`（**有意提交进版本库**） |
+| `preview*.png` | README 用的截图（主界面、悬浮球、右键菜单、概览卡片） |
+| `HANDOVER.md` | 交接文档：架构细节、排错表、验证清单 |
+| `CHANGELOG.md` | 版本变更记录 |
+| `ball.html` / `floating.html` | 旧版悬浮球与 1.1.0 的 380 × 500 悬浮窗，已不再被引用（历史文件） |
+
+安全说明、构建流程和排错表也见 [HANDOVER.md](HANDOVER.md)。
+
+## 版本记录
+
+| 版本 | 日期 | 要点 |
+| --- | --- | --- |
+| **1.2.3** | 10-28 | 修复 1.2.2 引入的「悬浮球左右键失灵」（跨模块覆盖了 Win32 定时器原型，逐帧时钟线程崩溃）；动画加了降级与超时自愈 |
+| 1.2.2 | 10-28 | 标题栏改为原生拖动；关闭窗口变成「吸进悬浮球」的收起动画（`shrink_anim.py`） |
+| 1.2.1 | 10-28 | 悬浮球右键菜单与概览卡片；60 fps 高精度帧时钟；主窗口淡入淡出 |
+| 1.2.0 | 10-28 | 悬浮球换成原生分层窗口（替代 WebView2 悬浮窗），无边框主窗口、自绘托盘菜单 |
+| 1.1.0 | 10-26 | 首个桌面壳（pywebview），380 × 500 置顶悬浮窗 |
+
+完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。

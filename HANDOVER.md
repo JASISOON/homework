@@ -1,7 +1,7 @@
 # 作业备忘 · 项目交接文档
 
 - 项目：作业备忘（Homework Desk）
-- 版本：1.2.0（2026-10-28：无边框窗口 / 托盘常驻 / 桌面悬浮球）
+- 版本：1.2.3（2026-10-28：修复 1.2.2 引入的「悬浮球左右键全失灵」，根因是 `SetWaitableTimer` 原型被跨模块覆盖，见 7.3.7）
 - 文档更新：2026-10-27
 - 形态：Windows 桌面应用（Python + pywebview/WebView2）
 - 数据源：深圳大学优课（TronClass）`https://lms.szu.edu.cn/api/todos`
@@ -93,9 +93,12 @@
   `easy_drag` 必须为 `False`，否则整页按下都会拖拽，按钮会点不动。
 - 拖拽只认 `.pywebview-drag-region`（标题栏左侧、空白拖拽区、悬浮窗品牌区）。
 - 缩放没有系统边框，前端在四边/四角放透明热区，`mousedown` 时调用
-  `window_resize(target, edge)`，Python 端用 `ReleaseCapture()` +
-  `SendMessageW(WM_NCLBUTTONDOWN, HTLEFT/...)` 交给系统原生缩放循环。
-  调用时必须左键仍按下（用 `GetAsyncKeyState(VK_LBUTTON)` 校验）。
+  `window_resize(target, edge)`。**不要**再用 `ReleaseCapture()` +
+  `SendMessageW(WM_NCLBUTTONDOWN, HTLEFT/...)`：frameless 窗口上 DefWindowProc
+  不会启动缩放循环（实测窗口完全不动），`ReleaseCapture()` 也只对本线程的鼠标捕获
+  有效，而拖动时捕获在 WebView2 的 UI 线程手里。现在改成和拖动一样「自己跟」：
+  记下起点光标与窗口矩形，按位移重算四条边（不小于 `WINDOW_MIN_*`）后
+  `SetWindowPos`，松手由 `GetAsyncKeyState(VK_LBUTTON)` 判定。
 - Win11 圆角/描边用 DWM：`DWMWA_WINDOW_CORNER_PREFERENCE=33`、
   `DWMWA_BORDER_COLOR=34`；最大化时改直角并去掉描边。
 - 去掉系统标题栏后客户区会缩小 16×39（100% DPI），所以在窗口 `shown` 事件里
@@ -148,8 +151,46 @@ CreateWindowExW(
 
 位置由 `clamp_ball_position()` 夹回当前显示器工作区，越界/拔掉显示器时不会跑到看不见的地方。
 
-数据来源：`DesktopApplication._ball_counts()` 返回 `(未完成总数, 48h 内到期, 已逾期)`，
-`poll_forever()` 每 30 秒取一次（取不到就画黄色 `!`），不阻塞主 UI 线程。
+数据来源：`DesktopApplication._ball_snapshot()` 返回快照 dict
+（`total` / `urgent` / `overdue` / `today` / `items[]`），`poll_forever()` 每 30 秒取一次
+（取不到就画黄色 `!`），不阻塞主 UI 线程。`items` 是最近到期的 3 条，供展开卡片使用。
+
+**弹层：右键菜单与概览卡片（2026-10 新增）**
+
+球、菜单、卡片是**同一个分层窗口**，只是尺寸和画法不同 —— 这样不用维护第二个窗口、
+第二套消息循环和位置记忆。三种形态共用一套展开动画与收起逻辑：
+
+- 状态：`_popup_kind` 取 `""`（球） / `"card"` / `"menu"`；`_pop_rect` 是展开后的目标矩形，
+  `_win_rect` 是当前实际窗口矩形。
+- 动画：`_start_animation()` 记 `_win_rect → _pop_rect`，`AnimClock` 每 16 ms 发
+  `WM_BALL_TICK`，窗口线程按缓动曲线插值后 `SetWindowPos`
+  （相当于 Electron 的 `win.setBounds` 逐帧动画）。展开 easeOutCubic / 收起加速吸入。
+  文字在 40% 之后才开始淡入（`_content_alpha`），避免小尺寸下文字挤压变形。
+- **为什么不用 `SetTimer`**：`WM_TIMER` 被系统时钟节拍（默认 15.625 ms）量化，
+  请求 16 ms 会被顶到两个节拍 ≈ 31 ms，动画只有 32 fps 且忽快忽慢；`timeBeginPeriod(1)`
+  在 Win10+ 压不下来（实测仍 30.4 ms）。`AnimClock` 改用
+  `CreateWaitableTimerExW(CREATE_WAITABLE_TIMER_HIGH_RESOLUTION)` + 一个等待线程，
+  每拍 `PostMessage(WM_BALL_TICK)` 回窗口线程渲染；实测帧间隔中位 16.2 ms、
+  最大 16.7 ms、没有一帧超过 20 ms。创建失败时自动退回 `SetTimer(10)`
+  （10 ms 小于一个节拍，同样每拍都能触发）。
+- 动画期间 `WM_PAINT` 被忽略：改窗口尺寸会招来 `WM_PAINT`，而定时器本来每帧都在重画，
+  再画一次等于白费一半渲染时间。
+- 毛玻璃：`_capture_backdrop()` 先 `Graphics.CopyFromScreen` 拍下卡片将覆盖的桌面，
+  把球所在矩形涂成周边平均色（否则虚化后留一团绿影），再按
+  `原图 → 1/10 → 1/4 → 原尺寸` 三级 bicubic 重采样模拟高斯模糊，最后叠一层
+  深色半透明（卡片 ~190/255、菜单 ~198/255）圆角矩形 + 1px 亮描边。
+- 外层画法：`_paint_card()` / `_paint_menu()` 都按「卡片坐标系」布局，再用
+  `_content_offset()` 把卡片原点平移到窗口坐标，所以动画中途看到的总是卡片的正确裁剪区域。
+- 命中：`_popup_click()` 按 `_popup_kind` 分流；卡片里是「× 按钮 / 作业行」，
+  菜单里是 `_menu_index_at()` 的行索引（分隔线不命中）。
+- 收起：展开完成后开 `WM_TIMER(TIMER_WATCH)`，每 40 ms 轮询 `GetAsyncKeyState`
+  的左/右键，出现「按下」且指针在窗口外就收起；Esc 同样收起。
+- 菜单项由 `DesktopApplication._ball_menu()` 现算，每项是
+  `{"action", "label", "icon", "danger", "bold"}` 或 `{"sep": True}`；
+  动作由 `_ball_menu_action(action)` 分发（`open` / `refresh` / `hide` / `quit`）。
+- **线程约定**：窗口状态只允许在窗口线程改。外部线程的 `show()` / `hide()` 一律
+  `PostMessage(WM_BALL_CMD)`、数据更新 `PostMessage(WM_BALL_DATA)`，
+  否则会和动画帧抢同一块 DIB（GDI+ 并发画同一个 Bitmap 会花屏或崩）。
 
 > 拖拽用绝对位移而不是增量，是因为旧版（WebView2 + IPC 增量）在 125% DPI 下每帧取整会累积
 > 偏移，拖久了明显跟不上手；绝对位移每次从原点点算，没有漂移。
@@ -206,7 +247,8 @@ CreateWindowExW(
 | 文件 | 责任 |
 | --- | --- |
 | `desktop_app.py` | 桌面入口；无边框主窗口；标题栏桥接、缩放、DWM 圆角；悬浮球的生命周期、位置持久化、角标数据；托盘图标与自绘右键菜单；单实例与唤回；退出清理 |
-| `ball_window.py` | 悬浮球：原生分层窗口（`WS_EX_LAYERED`）+ GDI+ 绘制，`UpdateLayeredWindow` 逐像素透明，自绘圆球/阴影/图标/角标，处理拖拽、单击、右键 |
+| `ball_window.py` | 悬浮球 / 右键菜单 / 概览卡片：同一个原生分层窗口（`WS_EX_LAYERED`）+ GDI+ 绘制，`UpdateLayeredWindow` 逐像素透明，自绘圆球/阴影/图标/角标；展开动画（`SetWindowPos` 缓动）、截屏虚化、命中与收起 |
+| `shrink_anim.py` | 收起主窗口的「吸进悬浮球」动画：抓一帧窗口画面（`PrintWindow` 优先，屏幕截图兜底），用分层窗口 `UpdateLayeredWindow` 按 `easeInQuad` 逐帧缩到球的位置并淡出；`_FrameClock` 提供 16 ms 高精度节拍 |
 | `homework_server.py` | 本地 HTTP API、登录、DPAPI、TronClass 数据归一化、完成状态 |
 | `homework-reminder.html` | 主界面 HTML/CSS/JS；自绘标题栏、拖拽/缩放热区、隐形滚动条 |
 | `ball.html` | 旧版悬浮球页面（WebView2 + CSS 画球）；已被 `ball_window.py` 取代，程序不再加载，仅留作历史参考 |
@@ -217,7 +259,7 @@ CreateWindowExW(
 | `ChineseSimplified.isl` | Inno Setup 简体中文语言文件 |
 | `build.ps1` | 一键重新打包 EXE 和安装程序（产物到 `..\version`） |
 | `release/` | 对外分发的安装包（只留当前版本）与 `SHA256SUMS.txt` |
-| `preview.png` / `preview-ball.png` | README 用的主界面与悬浮球预览图（演示数据，不含真实作业） |
+| `preview.png` / `preview-ball.png` / `preview-menu.png` / `preview-card.png` | README 用的主界面、悬浮球、右键菜单、概览卡片预览图（演示数据，不含真实作业） |
 
 ---
 
@@ -259,13 +301,14 @@ CreateWindowExW(
 ### 3.2.1 桌面桥 API（`js_api`，仅桌面版可用）
 
 前端通过 `window.pywebview.api.*` 调用，`window_state` / `window_control` /
-`window_resize` 是自绘标题栏和缩放专用的新接口。
+`window_resize` / `window_drag` 是自绘标题栏专用的新接口。
 
 | 方法 | 参数 | 说明 |
 | --- | --- | --- |
 | `window_state` | `target` | 返回 `{ok, maximized}`，用于同步最大化/还原图标 |
 | `window_control` | `target, action` | `minimize` / `toggle-maximize` / `close` / `hide`；主窗 `close` = 隐藏主窗 + 显示悬浮球 |
 | `window_resize` | `target, edge` | 触发系统原生缩放；`edge` 为 `left/right/top/.../bottom-right` |
+| `window_drag` | `target` | mousedown 时调用：记下「光标 − 窗口原点」，之后 60 fps 轮询光标 + `SetWindowPos` 跟随；靠 `GetAsyncKeyState(VK_LBUTTON)` 判断松手 |
 | `toggle_floating` | — | 显示/隐藏悬浮球，返回 `{open}` |
 | `get_floating_state` | — | 主界面轮询悬浮球是否显示 |
 | `show_main` / `show_main_and_login` | — | 回到主界面（同时收起悬浮球） |
@@ -365,7 +408,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 输出：
 
 - `dist\HomeworkDesk\HomeworkDesk.exe`：便携版程序目录
-- `..\version\作业备忘-安装程序-1.2.0.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
+- `..\version\作业备忘-安装程序-1.2.3.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
 
 ### 5.3 单独构建
 
@@ -374,6 +417,14 @@ py -3.14 -m pip install requests pywebview pyinstaller
 py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" .\installer.iss
 ```
+
+> 本机 `py -3.14` 目前**没有装 PyInstaller**（直接跑会报 `No module named PyInstaller`），
+> 打包时用的是临时虚拟环境 `%TEMP%\hd-venv` 里的解释器：
+> `"%TEMP%\hd-venv\Scripts\python.exe" -m PyInstaller --noconfirm HomeworkDesk.spec`。
+> 想用系统解释器的话先执行一次 `py -3.14 -m pip install pyinstaller`。
+>
+> 另外：如果 `dist\HomeworkDesk\HomeworkDesk.exe` 正在运行，目录会被锁住无法重建，
+> 可以先 `--distpath dist_build` 打一份，或者关掉正在运行的实例。
 
 ### 5.4 版本升级
 
@@ -388,12 +439,12 @@ py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 构建产物落在仓库外的 `..\version\`，仓库里**只保留当前版本**的安装包：
 
 ```powershell
-# 1. 构建，输出 ..\version\作业备忘-安装程序-1.2.0.exe
+# 1. 构建，输出 ..\version\作业备忘-安装程序-1.2.3.exe
 .\build.ps1
 
 # 2. 换掉 release 里的旧包
 Remove-Item .\release\*.exe
-Copy-Item ..\version\作业备忘-安装程序-1.2.0.exe .\release\
+Copy-Item ..\version\作业备忘-安装程序-1.2.3.exe .\release\
 
 # 3. 重算校验值
 #    文件名含中文，必须用 UTF-8 无 BOM 写，否则在别的编辑器里会变成 ???? 
@@ -434,14 +485,72 @@ $hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
 | 拖拽 | 起点 (500,400) 拖到 (400,430) → 窗口位移正好 (-100, +30) |
 | 松手落盘 | `ball-state.json` 与窗口实际坐标一致 |
 | 收起 / 再显示 | 回到上次位置 |
-| 单击悬浮球 | 回主界面并收起悬浮球 |
-| 右键悬浮球 | 收起，进程不退出 |
+| 单击悬浮球 | 展开概览卡片（点卡片里的作业行才回主界面） |
+| 右键悬浮球 | 弹出操作菜单，进程不退出 |
 | 主界面「悬浮球」按钮 | 一次点击显示、再点收起 |
 | 角标数字 | 未完成 11 条 → 红底白字「11」 |
 | 快照（打包版 exe） | 启动 → `WM_CLOSE` → 球在 (1582,265)，截图可见绿色圆球 + 文档图标 + 红色角标，四周透出背景文字 |
 
 > 验证时用截图比对：先截“有球”的画面，再 `hide_floating()` 截“无球”的画面，
 > 两者在球外区域必须一致。直接按像素总数比对会被动态壁纸/视频干扰，所以只看四角。
+
+右键菜单 + 概览卡片（2026-10 新增，离屏自动化）：
+
+窗口停在 (-600, -600)、假装工作区在屏幕外，用 `PostMessage` 打真实鼠标消息走完整
+`WndProc`，22 项断言全通过（脚本：`%TEMP%\hd_menu_test.py`）：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 右键展开 | 80×80 → 196×170，`_popup_kind == "menu"` |
+| 菜单尺寸 | 宽 `MENU_W`、高 `PAD*2 + 4 项 + 2 分隔线`，与算式一致 |
+| 命中 | 首项 0、分隔线 -1、左边距 -1 |
+| 点「隐藏悬浮球」 | 回调收到 `hide`，窗口回到 80×80 |
+| 左键展开 | 80×80 → 328×234，`_popup_kind == "card"` |
+| 点作业行 | 回调收到 `open-main`，随后收起 |
+| 收起按钮 / Esc / 点外部 | 均回到 80×80 |
+| `hide()` / `show()` 投递 | `IsWindowVisible` 正确切换，且回来时仍是 80×80 |
+
+视觉用「把分层窗口的 DIB 拷成 PNG」检查（`%TEMP%\hd_preview\*.png`）：
+深色玻璃层能透出虚化后的桌面、文字不溢出、右上角 × 和菜单图标对齐。
+
+动画帧率（2026-10，`%TEMP%\hd_fps_test.py`）：
+
+| 指标 | 改造前 | 改造后 |
+| --- | --- | --- |
+| 定时器间隔中位 | 30.4 ms（32 fps） | 16.2 ms（61 fps） |
+| 间隔 > 20 ms 的比例 | 62% | 0% |
+| 最大间隔 | 32.0 ms | 16.7 ms |
+| 单帧渲染耗时 | 3.0 ms（不是瓶颈） | 3.0 ms |
+| 每帧渲染次数 | 1.11 | 1.07 |
+
+主窗口过渡（`%TEMP%\hd_anim_live.py`，窗口摆在 (-3000,-1200) 屏幕外）：
+
+| 检查 | 结果 |
+| --- | --- |
+| `typeof window.__appAnim` | `function` |
+| 进场 opacity 采样（每 50 ms） | 0.23 → 0.69 → 0.84 → 0.96 → 0.99 → 1 |
+| 退场 opacity 采样 | 0.95 → 0.78 → 0.37 → 0 → 0（停住，下次显示不会闪旧内容） |
+| 再次进场 | 0.65 → 1（能正常重播） |
+| 类名切换 | `app-enter` / `app-leave` 正确挂到 `<html>` |
+| 计算样式 | `app-titlebar`、`page-shell` 的 `animation-name` 均为 `app-window-in` |
+
+拖动 / 缩放 / 收起动画（2026-10-28，`%TEMP%\hd_drag_live.py`、`hd_resize_live.py`、`hd_e2e_hide.py`）：
+窗口一律摆在 (-2400,-1400) 屏幕外，用 `mouse_event` 打真实鼠标按键，避免打扰桌面。
+
+| 检查 | 结果 |
+| --- | --- |
+| 按住标题栏拖 (5,5)→(105,55) | 窗口 `dx=100 dy=50`，尺寸不变 |
+| 拖右下角缩放 (+100,+50) | 宽高各 +100 / +50，左上角不动 |
+| `typeof window.pywebview.api.window_drag` | `function` |
+| `hide_to_tray()` 全程耗时 | 0.33 s（含 0.28 s 收缩动画） |
+| 收缩动画窗口 | 出现过 1 次，播完已销毁（`FindWindowW("Static", "HomeworkDeskShrink") == 0`） |
+| 收起后 | 主窗口隐藏、球可见且仍是 80×80 |
+| `activate_main()` | 主窗口回来、球收起；连做两轮都正常 |
+| `ShrinkAnimation` 离屏基准 | 15 帧 / 0.305 s，帧间隔中位 16.0 ms、最大 16.5 ms，首帧 900×600 alpha 255 → 末帧 80×80 alpha 0 |
+
+> 教训：`WM_NCLBUTTONDOWN + HTCAPTION / HTLEFT` 在 pywebview 的 frameless 窗口上
+> **不会**启动系统移动 / 缩放循环（实测窗口一动不动），`ReleaseCapture()` 也只对
+> 本线程的鼠标捕获有效。拖动和缩放都只能自己轮询光标 + `SetWindowPos`。
 
 窗口改版（源码预览 + 重新打包的 EXE）额外验证：
 
@@ -455,7 +564,6 @@ $hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
 - 打包后的 `HomeworkDesk.exe` 同样通过上述关闭→托盘→唤回→退出流程。
 
 自绘托盘菜单（2026-10 版）额外验证：
-
 - 直接用 `TrayMenuPopup._paint(Graphics)` 渲染三种状态（无悬停 / 悬停普通项 /
   悬停退出项）并放大检查，圆角、图标、文字基线、分隔线都正常。
 - 在真实 `TrayController` 上模拟右键：菜单成功弹出（218×176），文案随
@@ -474,6 +582,26 @@ $hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
 - 托盘菜单关闭方式：Esc、点菜单外（`Deactivate` + 250ms 宽限）。
 - 小坑：菜单坐标依赖光标位置（`show_at` 用光标点向上弹），自动化点击时不要
   假设固定的窗口位置，先按窗口尺寸（218×176）找到弹窗再算行坐标。
+
+1.2.3 回归验证（悬浮球左右键失灵这条）：
+
+| 检查 | 结果 |
+| --- | --- |
+| `import ball_window, shrink_anim` 后 `SetWaitableTimer.argtypes` | 两边都是 `c_void_p`，各自的结构体都能成功调用（返回 1） |
+| 主窗口点 × → 收起 | 收缩动画播完、主窗口隐藏、球出现在 `(1661,311)` 80×80 |
+| 左键单击球 | 展开卡片 328×234 |
+| 右键（卡片展开态） | 收回 80×80 |
+| 右键（球态） | 弹出菜单 196×170 |
+| 真实鼠标拖动 (−120,+90) / (+120,−90) | 位置精确跟手，尺寸保持 80×80，松手写回 `ball-state.json` |
+| 日志 | 无 `逐帧时钟线程异常`、无 `显示托盘提示失败` |
+| 安装版 `HomeworkDesk.exe`（1.2.3） | 启动日志 `启动作业备忘桌面版 v1.2.3`；点 × → 球；左键展开 / 右键菜单全部正常 |
+| 安装包静默安装 | 退出码 0、150 个文件、`_internal/homework-reminder.html` 与源码字节级一致 |
+
+> 排查手法（下次直接照做，别猜）：`WindowFromPoint` 确认球中心命中的是
+> `HomeworkDeskBallWindow` → `SendMessageTimeoutW(WM_NULL, 400ms)` 确认窗口线程
+> 还在泵消息 → 两者都正常就开 `HOMEWORK_DESK_DEBUG=1` 看 `_wndproc` 吞掉的异常。
+> 这次的异常信息就躺在日志里：`expected LP__LARGE_INTEGER instance instead of
+> pointer to _LARGE_INTEGER`。
 
 未使用真实账号验证的情形：
 
@@ -543,6 +671,74 @@ $hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
 | 重启后球回到旧位置 | 松手时 `move_to(..., notify=True)` 才写 `ball-state.json`；确认该文件可写。 |
 | 启动时球在屏幕外找不到 | 窗口创建后立刻 `move_to()` 到 `clamp_ball_position()` 的结果；如果保存的坐标来自已拔掉的显示器，删 `ball-state.json`。 |
 | 点击球后全屏游戏被切出来 | 检查 `WS_EX_NOACTIVATE` 是否被抠掉，以及 `activate_main()` 是否被误触发。 |
+
+### 7.3.4 右键菜单 / 概览卡片异常
+
+| 现象 | 先看这里 |
+| --- | --- |
+| 右键球没有反应 | 确认 `BallWindow(menu_provider=...)` 传了；`_load_menu_items()` 会丢掉没有 `label` 的项，并在首尾去掉多余分隔线，如果全被丢掉就什么都不弹（日志有 `右键菜单没有可用项`）。 |
+| 右键后球直接收起 | 旧版行为是「右键收起」；现在 `WM_RBUTTONUP` 分支必须是 `open_menu()`。日志里若出现 `_on_hide` 调用路径说明拿的还是旧包。 |
+| 菜单瞬间自己关掉 | 展开完成后 `TIMER_WATCH` 每 40 ms 轮询全局键；如果窗口还没真正显示就被判定「在窗口外」会立刻收起。检查 `_finish_animation()` 里 `_win_rect` 是否已经等于目标矩形。 |
+| 菜单/卡片是纯黑方块，看不到虚化背景 | `_capture_backdrop()` 失败（多显示器负坐标、远程桌面、护眼软件抓屏受限）会回退成纯深色，功能不受影响；日志 `截取卡片背景失败`。 |
+| 文字模糊或发虚 | 检查 `TextRenderingHint` 是否为 `AntiAlias`；另外卡片是逐像素 alpha 合成，字体不要用 `ClearTypeGridFit`（子像素抗锯齿在透明通道上会出彩边）。 |
+| 卡片高度和内容对不上 | 展开时按 `_row_count` 固定行数，数据在展开期间更新只会换文字、不改行数；要改行数必须先 `collapse()`。 |
+| 高分屏下卡片很小 | `_ui_scale` 在窗口创建后由 `GetDpiForWindow()` 决定；如果进程不是 DPI aware，会拿到 96。检查 `enable_dpi_awareness()` 是否在 `webview.start()` 之前调用。 |
+
+### 7.3.5 动画卡顿 / 窗口过渡
+
+| 现象 | 先看这里 |
+| --- | --- |
+| 展开动画一顿一顿、帧数少 | 先量一下：`%TEMP%\hd_fps_test.py` 会打印定时器实际间隔。中位 30 ms 说明跑的还是 `SetTimer(16)` 老路径（被 15.625 ms 节拍量化），应走 `AnimClock`；中位 16 ms 才正常。 |
+| 动画帧率正常但一卡一卡 | 看 `每帧 SetWindowPos+渲染` 耗时；卡片态渲染约 3 ms，明显更高通常是 `_capture_backdrop()` 被放进了循环，或 `WM_PAINT` 没在动画期间跳过（每帧画两次）。 |
+| `AnimClock` 线程报错 / 定时器创建失败 | 日志若出现 `逐帧时钟不可用，退回 SetTimer 驱动动画`，检查 `kernel32.CreateWaitableTimerExW` / `SetWaitableTimer` 的原型是否被别的模块覆盖（见 7.3.7）。现在两条路都有兜底：高精度定时器失败退 `SetTimer(10)`，再失败靠 `_recover_stale_anim()` 强制收尾，动画只会变糙不会卡死。 |
+| 主窗口打开/收起没有动画 | 页面里 `window.__appAnim` 是否定义（`homework-reminder.html` 末尾那段）；`DesktopBridge._play_main_anim()` 里 `evaluate_js` 失败只写 debug 日志，不报错。 |
+| 主窗口出现时白屏一下 | 退场动画用 `both` 停在 `opacity: 0`，下次显示必须靠 `enter` 才能看见内容；`activate_main()` 和 `events.shown` 都会调，页面侧 300 ms 去重。若两条路径都没走到，检查 `_on_window_shown` 是否被替换掉。 |
+| 收起时窗口“啪”地消失 | 现在收起走 `shrink_anim.py`：`hide_to_tray()` 先 `ShrinkAnimation.from_window()` 抓帧，`play(on_ready=...)` 的第一帧画好后才隐藏真窗口。如果直接消失，说明抓帧返回了 `None`（走了兜底分支），日志里会有 `抓取主窗口画面失败` 或 `屏幕截图也失败了`。 |
+| 动画在窗口还没显示时就跑完了 | 页面会检查 `document.visibilityState`，不可见时把请求挂在 `pending`，等 `visibilitychange` 变可见再播。 |
+
+### 7.3.6 标题栏拖不动 / 边缘缩放没反应
+
+| 现象 | 先看这里 |
+| --- | --- |
+| 按住标题栏窗口不动 | 页面 `mousedown`（capture 阶段）应调用 `window.pywebview.api.window_drag('main')`。用 DevTools 看 `typeof window.pywebview.api.window_drag` 是否为 `function`；不是就是后端方法没暴露（名字必须不以 `_` 开头）。 |
+| `window_drag` 返回 `{ok: false}` | 回到 Python 时左键已经松开了（`GetAsyncKeyState(VK_LBUTTON)` 的 0x8000 位没了）。常见于 IPC 很慢或只是一次单击；按住再拖即可。 |
+| 拖起来一跳一跳 | `_drag_loop` 里 `time.sleep(0.008)` 实际会被系统节拍量化成 ~15.6 ms（≈64 fps），属正常；若明显更慢，检查是不是又退回了「每帧一次 IPC」的老路。 |
+| 按边缘拖不动大小 | 热区在 `.win-resize-layer` 里，必须有 `data-resize="left/right/top/bottom/top-left..."`；`window_resize()` 只接受 `RESIZE_EDGES` 里的键。 |
+| 缩放后窗口比设定的小 / 大 | 下限是 `WINDOW_MIN_WIDTH/HEIGHT`（900×620），必须和 `create_window(min_size=...)` 一致，否则松手后会被 pywebview 拉回。 |
+
+### 7.3.7 悬浮球左右键全失灵 / 拖不动
+
+**症状**：球看得见、鼠标移上去光标也变成手型，但左键点不开卡片、右键不弹菜单、按住也拖不动；
+`%LOCALAPPDATA%\HomeworkDesk\data\homework-desk.log` 里能搜到
+`逐帧时钟线程异常` / `ctypes.ArgumentError: ... expected LP__LARGE_INTEGER`。
+（1.2.2 就是这个毛病，1.2.3 已修。）
+
+**根因**：`ctypes.windll` 是**进程级共享**的。`ctypes.windll.kernel32` 是一个单例，
+`SetXxx.argtypes` 谁最后设置谁生效，模块之间会互相覆盖。`ball_window.py` 和
+`shrink_anim.py` 各自定义了 `_LARGE_INTEGER` 结构并各自声明
+`SetWaitableTimer` 的原型；`desktop_app.py` 先 import `ball_window`、后 import
+`shrink_anim`，于是球这边传自己的结构体时类型对不上，动画时钟线程第一帧就抛异常退出，
+`_animating` 永远停在 `True`，`expand()` / `collapse()` 全部被 `if self._animating: return`
+静默吞掉 —— 表现就是球“哑了”。
+
+**规则（踩过三次了，务必遵守）**：凡是**两个及以上模块都会声明**的 Win32 函数，
+参数里的结构体指针一律写成 `ctypes.c_void_p`，调用处显式
+`ctypes.cast(ctypes.byref(obj), ctypes.c_void_p)`。已经统一过的有：
+
+| 函数 | 结构体参数 |
+| --- | --- |
+| `gdi32.CreateDIBSection` | 第 2 个（`BITMAPINFO*`） |
+| `user32.UpdateLayeredWindow` | 第 8 个（`BLENDFUNCTION*`） |
+| `kernel32.SetWaitableTimer` | 第 2 个（`LARGE_INTEGER*`） |
+
+**排查手法**：不用猜。先确认窗口本身是好的 —— 用 `WindowFromPoint` 看球中心命中的是谁；
+再 `SendMessageTimeoutW(hwnd, WM_NULL, ..., 400ms)` 判断窗口线程还在不在泵消息；
+两者都正常但点击没反应，就基本可以断定是 `_wndproc` 里被条件挡掉或异常被吞了，
+这时把日志级别开到 DEBUG（`HOMEWORK_DESK_DEBUG=1`）重跑，异常会落盘。
+
+**自愈逻辑**：`BallWindow._recover_stale_anim()` 在 `expand` / `open_menu` / `collapse`
+入口处检查「动画已超时（时长 + 0.6 s）仍未收尾」，是就强制 `_finish_animation()`。
+即使以后再有时钟类故障，最坏只是动画变生硬，不会让整个球失去交互。
 
 ### 7.4 自动启动
 
@@ -623,7 +819,7 @@ $hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
 | --- | --- |
 | 远程 | `https://github.com/JASISOON/homework.git` |
 | 分支 | `main`（跟踪 `origin/main`） |
-| 当前版本 | 1.2.0 |
+| 当前版本 | 1.2.3 |
 
 ### 日常更新流程
 
@@ -642,8 +838,8 @@ git push origin main
 
 ### 在 Releases 里发布
 
-1. GitHub 仓库 → Releases → Draft a new release，tag 填 `v1.2.0`。
-2. 附件上传 `release/作业备忘-安装程序-1.2.0.exe`。
+1. GitHub 仓库 → Releases → Draft a new release，tag 填 `v1.2.3`。
+2. 附件上传 `release/作业备忘-安装程序-1.2.3.exe`。
 3. 说明直接复制 `CHANGELOG.md` 里对应版本的段落。
 4. 正文里附上 `SHA256SUMS.txt` 的哈希值。
 

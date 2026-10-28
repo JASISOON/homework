@@ -227,6 +227,61 @@
     }
 
     /* ============================================================
+       窗口过渡动画
+       桌面壳在显示 / 收起主窗口时调用 window.__appAnim('enter'|'leave')。
+       只动内容层，body 的背景渐变保持不动，所以不会闪白底。
+       ============================================================ */
+    @keyframes app-window-in {
+      from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.982);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes app-window-out {
+      from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+      to {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.988);
+      }
+    }
+
+    html.app-enter .app-titlebar,
+    html.app-enter .page-shell {
+      animation: app-window-in var(--app-anim-in, 280ms) cubic-bezier(0.22, 0.68, 0.32, 1) both;
+      transform-origin: 50% 42%;
+      will-change: opacity, transform;
+    }
+
+    html.app-leave .app-titlebar,
+    html.app-leave .page-shell {
+      animation: app-window-out var(--app-anim-out, 180ms) cubic-bezier(0.4, 0.0, 0.9, 0.55) both;
+      transform-origin: 50% 42%;
+      will-change: opacity, transform;
+    }
+
+    /* 悬浮球唤回主窗口时，卡片/菜单先淡出于同一点，视觉上更像“从球里长出来” */
+    html.app-enter .page-shell {
+      animation-delay: 20ms;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html.app-enter .app-titlebar,
+      html.app-enter .page-shell,
+      html.app-leave .app-titlebar,
+      html.app-leave .page-shell {
+        animation-duration: 1ms;
+      }
+    }
+
+    /* ============================================================
        页面结构
        ============================================================ */
     .page-shell {
@@ -4652,8 +4707,16 @@
           event.stopPropagation();
           lastDragDown = 0;
           runControl('toggle-maximize');
-        } else {
-          lastDragDown = now;
+          return;
+        }
+        lastDragDown = now;
+        const api = desktopApi();
+        if (api && typeof api.window_drag === 'function') {
+          // 交给 Python 侧跟光标（原生 SetWindowPos，一次 IPC 走完整个拖动），
+          // 同时掐掉 pywebview 内置的 JS 拖动，避免两套拖动互相打架。
+          event.preventDefault();
+          event.stopPropagation();
+          api.window_drag(TARGET);
         }
       }, true);
 
@@ -4783,6 +4846,66 @@
       window.addEventListener('load', layoutScrollbar);
       setTimeout(layoutScrollbar, 400);
       new ResizeObserver(layoutScrollbar).observe(document.body);
+    })();
+  </script>
+
+  <script>
+    /* ------------------------------------------------------------
+       窗口过渡：桌面壳（pywebview）显示 / 收起主窗口时调用
+         window.__appAnim('enter')  淡入 + 轻微上浮
+         window.__appAnim('leave')  淡出，播完由 Python 侧再真正隐藏
+       时长要和 desktop_app.py 里的 MAIN_ANIM_* 对上。
+       ------------------------------------------------------------ */
+    (function () {
+      const root = document.documentElement;
+      const CLASSES = ['app-enter', 'app-leave'];
+      const DURATION = { enter: 280, leave: 180 };
+      let lastPlayed = 0;
+      let lastKind = '';
+      let pending = '';
+
+      function play(kind) {
+        const duration = DURATION[kind] || 240;
+        // 窗口还没真正显示时（visibilityState=hidden）先记下来，等可见了再播，
+        // 否则动画在后台跑完，用户切回来看到的是一张静止画面。
+        if (document.visibilityState !== 'visible') {
+          pending = kind;
+          return duration;
+        }
+        const now = performance.now();
+        // 首次加载时页面自己会播一次进场，紧接着 Python 又调一次 —— 同一种动画
+        // 300ms 内忽略重复请求。注意 leave 不能被挡住，否则窗口会直接消失。
+        if (kind === lastKind && now - lastPlayed < 300) {
+          return duration;
+        }
+        lastPlayed = now;
+        lastKind = kind;
+        root.classList.remove(...CLASSES);
+        // 强制一次重排，否则同名动画不会重新播放。
+        void root.offsetWidth;
+        root.classList.add(kind === 'leave' ? 'app-leave' : 'app-enter');
+        return duration;
+      }
+
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible' && pending) {
+          const kind = pending;
+          pending = '';
+          play(kind);
+        }
+      });
+
+      window.__appAnim = function (kind) {
+        return play(String(kind || 'enter'));
+      };
+
+      // 页面自己完成首帧渲染后先播一次，覆盖“壳还没接好桥”的窗口。
+      window.addEventListener('load', function () {
+        play('enter');
+      });
+      if (document.readyState === 'complete') {
+        play('enter');
+      }
     })();
   </script>
 </body>

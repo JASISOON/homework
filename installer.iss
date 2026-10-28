@@ -2,7 +2,7 @@
 ; 编译：ISCC.exe installer.iss
 
 #define MyAppName "作业备忘"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.2.3"
 #define MyAppPublisher "个人项目"
 #define MyAppExeName "HomeworkDesk.exe"
 #define MyAppId "{{8F2B8F42-6F6D-4D7E-9B2A-2E5C5D1B7A31}"
@@ -21,7 +21,7 @@ AllowNoIcons=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\version
-OutputBaseFilename=作业备忘-安装程序-1.2.0
+OutputBaseFilename=作业备忘-安装程序-1.2.3
 SetupIconFile=homework-desk.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
@@ -33,7 +33,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartApplications=no
 AppMutex=Local\HomeworkDeskDesktopApp
-VersionInfoVersion=1.2.0.0
+VersionInfoVersion=1.2.3.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} 安装程序
 VersionInfoProductName={#MyAppName}
