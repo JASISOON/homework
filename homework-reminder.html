@@ -1576,6 +1576,218 @@
       vertical-align: 1px;
     }
 
+    /* 作业内容 + 附件（1.4.1） */
+    .task-detail {
+      margin-top: 8px;
+    }
+
+    .task-detail__toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px 3px 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      color: var(--accent-ink);
+      font-family: inherit;
+      font-size: 11.5px;
+      font-weight: 660;
+      line-height: 1.6;
+      cursor: pointer;
+      transition: background 150ms ease, border-color 150ms ease;
+    }
+
+    .task-detail__toggle:hover {
+      border-color: var(--line-strong);
+      background: var(--green-soft);
+    }
+
+    .task-detail__toggle .icon {
+      width: 12px;
+      height: 12px;
+      color: currentColor;
+      transition: transform 180ms ease;
+    }
+
+    .task-detail[data-open="1"] .task-detail__toggle .icon {
+      transform: rotate(90deg);
+    }
+
+    .task-detail__count {
+      color: var(--muted-weak);
+      font-weight: 600;
+    }
+
+    .task-detail__body {
+      margin-top: 8px;
+      padding: 11px 13px 12px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--surface-soft);
+      animation: detailFade 180ms ease both;
+    }
+
+    @keyframes detailFade {
+      from { opacity: 0; transform: translateY(-3px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .detail-loading,
+    .detail-empty {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .detail-text {
+      max-height: 340px;
+      overflow: auto;
+      color: var(--ink);
+      font-size: 12.5px;
+      line-height: 1.78;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .detail-text p,
+    .detail-text div {
+      margin: 0 0 6px;
+    }
+
+    .detail-text p:last-child,
+    .detail-text div:last-child {
+      margin-bottom: 0;
+    }
+
+    .detail-text ul,
+    .detail-text ol {
+      margin: 4px 0 8px;
+      padding-left: 20px;
+    }
+
+    .detail-text a {
+      color: var(--accent-ink);
+      text-decoration: underline;
+    }
+
+    .detail-text img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 6px;
+      vertical-align: middle;
+    }
+
+    .detail-text table {
+      width: auto;
+      max-width: 100%;
+      margin: 6px 0;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .detail-text td,
+    .detail-text th {
+      padding: 3px 7px;
+      border: 1px solid var(--line);
+    }
+
+    .detail-atts {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-top: 10px;
+      padding-top: 9px;
+      border-top: 1px dashed var(--line);
+    }
+
+    .detail-atts__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .mini-btn {
+      padding: 2px 8px;
+      border: 1px solid var(--green-line);
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--accent-ink);
+      font-family: inherit;
+      font-size: 10.5px;
+      font-weight: 660;
+      line-height: 1.65;
+      cursor: pointer;
+      transition: background 150ms ease;
+    }
+
+    .mini-btn:hover {
+      background: var(--green-tint);
+    }
+
+    .mini-btn[disabled] {
+      opacity: 0.55;
+      cursor: progress;
+    }
+
+    .att-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      width: 100%;
+      padding: 5px 8px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family: inherit;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 150ms ease, background 150ms ease;
+    }
+
+    .att-row:hover {
+      border-color: var(--line-strong);
+      background: var(--green-soft);
+    }
+
+    .att-row[disabled] {
+      opacity: 0.6;
+      cursor: progress;
+    }
+
+    .att-row .icon {
+      flex: none;
+      width: 13px;
+      height: 13px;
+      color: var(--muted);
+    }
+
+    .att-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .att-size {
+      flex: none;
+      color: var(--muted-weak);
+      font-size: 10.5px;
+    }
+
+    .att-action {
+      flex: none;
+      color: var(--accent-ink);
+      font-size: 11px;
+      font-weight: 660;
+    }
+
     .task-meta {
       display: flex;
       align-items: center;
@@ -3279,6 +3491,17 @@
       <path d="M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"></path>
       <path d="M6.5 7l.8 11.3A1.7 1.7 0 0 0 9 20h6a1.7 1.7 0 0 0 1.7-1.7L17.5 7"></path>
     </symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24">
+      <path d="M9 6l6 6-6 6"></path>
+    </symbol>
+    <symbol id="i-paperclip" viewBox="0 0 24 24">
+      <path d="M20 11.5l-7.8 7.8a5 5 0 0 1-7-7l7.9-7.9a3.3 3.3 0 0 1 4.7 4.7l-7.9 7.9a1.7 1.7 0 0 1-2.4-2.4l7.2-7.2"></path>
+    </symbol>
+    <symbol id="i-download" viewBox="0 0 24 24">
+      <path d="M12 4v11"></path>
+      <path d="M7.5 10.5L12 15l4.5-4.5"></path>
+      <path d="M5 19h14"></path>
+    </symbol>
   </svg>
 
   <div class="page-shell">
@@ -3735,6 +3958,9 @@
           captchaImage: ''
         },
         lastUpdated: null,
+        details: new Map(),
+        openDetails: new Set(),
+        prefetching: false,
         loginPending: false,
         toastTimer: null,
         renderedAt: 0,
@@ -4050,17 +4276,18 @@
          本机 API
          ========================================================== */
       async function requestJSON(path, options = {}) {
+        const { timeout = REQUEST_TIMEOUT, ...init } = options;
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+        const timer = setTimeout(() => controller.abort(), timeout);
         const headers = {
           Accept: 'application/json',
-          ...(options.headers || {})
+          ...(init.headers || {})
         };
-        if (options.body) headers['Content-Type'] = 'application/json';
+        if (init.body) headers['Content-Type'] = 'application/json';
 
         try {
           const response = await fetch(path, {
-            ...options,
+            ...init,
             headers,
             cache: 'no-store',
             signal: controller.signal
@@ -4459,6 +4686,230 @@
         `;
       }
 
+      /* ==========================================================
+         作业内容 / 附件（1.4.1）
+         ========================================================== */
+      function formatBytes(bytes) {
+        const value = Number(bytes) || 0;
+        if (value <= 0) return '';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let size = value;
+        let index = 0;
+        while (size >= 1024 && index < units.length - 1) {
+          size /= 1024;
+          index += 1;
+        }
+        const text = index === 0 ? String(size) : size.toFixed(size >= 10 ? 0 : 1);
+        return `${text} ${units[index]}`;
+      }
+
+      function renderDetailBody(detail) {
+        const attachments = Array.isArray(detail.attachments) ? detail.attachments : [];
+        const body = detail.descriptionHtml
+          ? `<div class="detail-text">${detail.descriptionHtml}</div>`
+          : '<p class="detail-empty">这条作业没有文字说明，看看附件里有没有要求。</p>';
+        if (!attachments.length) return body;
+
+        const rows = attachments
+          .map(
+            (attachment) => `
+              <button
+                class="att-row"
+                type="button"
+                data-download-att="${escapeHtml(attachment.id)}"
+                data-download-task="${escapeHtml(detail.id)}"
+                title="保存到桌面：${escapeHtml(attachment.name)}"
+              >
+                <svg class="icon" aria-hidden="true"><use href="#i-paperclip"></use></svg>
+                <span class="att-name">${escapeHtml(attachment.name)}</span>
+                <span class="att-size">${formatBytes(attachment.size)}</span>
+                <span class="att-action">下载</span>
+              </button>
+            `
+          )
+          .join('');
+
+        return `${body}
+          <div class="detail-atts">
+            <div class="detail-atts__head">
+              <span>附件 ${attachments.length} 个 · 下载到桌面</span>
+              <button class="mini-btn" type="button" data-download-all="${escapeHtml(detail.id)}">全部下载</button>
+            </div>
+            ${rows}
+          </div>
+        `;
+      }
+
+      async function ensureDetail(taskId) {
+        const cached = state.details.get(taskId);
+        if (cached) return cached;
+        const detail = await requestJSON(
+          `/api/homework/${encodeURIComponent(taskId)}/detail`,
+          { timeout: 40000 }
+        );
+        state.details.set(taskId, detail);
+        return detail;
+      }
+
+      function updateDetailCount(taskId) {
+        const detail = state.details.get(taskId);
+        if (!detail) return;
+        const boxes = document.querySelectorAll(
+          `.task-detail[data-detail-id="${CSS.escape(String(taskId))}"]`
+        );
+        const count = Array.isArray(detail.attachments) ? detail.attachments.length : 0;
+        boxes.forEach((box) => {
+          const badge = box.querySelector('[data-detail-count]');
+          if (badge) {
+            badge.textContent = count ? `· ${count} 个附件` : '';
+            badge.hidden = !count;
+          }
+          const body = box.querySelector('[data-detail-body]');
+          if (box.dataset.open === '1' && body) {
+            body.innerHTML = renderDetailBody(detail);
+          }
+        });
+      }
+
+      async function prefetchDetailCounts(items) {
+        // 后台静默补齐「N 个附件」，打开卡片时就不用等
+        if (state.prefetching) return;
+        state.prefetching = true;
+        const queue = items.slice(0, 40);
+        let cursor = 0;
+        const worker = async () => {
+          while (cursor < queue.length) {
+            const item = queue[cursor];
+            cursor += 1;
+            if (!item || state.details.has(item.id)) continue;
+            try {
+              await ensureDetail(item.id);
+              updateDetailCount(item.id);
+            } catch {
+              /* 预取失败不打扰用户，点开时还会再试 */
+            }
+          }
+        };
+        try {
+          await Promise.all([worker(), worker()]);
+        } finally {
+          state.prefetching = false;
+        }
+      }
+
+      async function toggleDetail(taskId, card) {
+        const box = card.querySelector('.task-detail');
+        if (!box) return;
+        const body = box.querySelector('[data-detail-body]');
+        const label = box.querySelector('[data-detail-label]');
+        const toggle = box.querySelector('[data-toggle-detail]');
+        const isOpen = box.dataset.open === '1';
+
+        if (isOpen) {
+          box.dataset.open = '0';
+          state.openDetails.delete(String(taskId));
+          if (body) body.hidden = true;
+          if (label) label.textContent = '查看作业内容';
+          if (toggle) toggle.setAttribute('aria-expanded', 'false');
+          return;
+        }
+
+        box.dataset.open = '1';
+        state.openDetails.add(String(taskId));
+        if (label) label.textContent = '收起作业内容';
+        if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        if (!body) return;
+        body.hidden = false;
+
+        const cached = state.details.get(taskId);
+        if (cached) {
+          body.innerHTML = renderDetailBody(cached);
+          return;
+        }
+
+        body.innerHTML = '<p class="detail-loading">正在读取作业内容…</p>';
+        try {
+          const detail = await ensureDetail(taskId);
+          if (box.dataset.open !== '1') return;
+          body.innerHTML = renderDetailBody(detail);
+          updateDetailCount(taskId);
+        } catch (error) {
+          console.error('[作业备忘] 读取作业内容失败：', error);
+          if (['AUTH_REQUIRED', 'AUTH_FAILED', 'CAPTCHA_REQUIRED'].includes(error.code)) {
+            showToast('登录已失效，重新登录后就能看作业内容了', 'error');
+            openAuthDialog();
+            return;
+          }
+          if (box.dataset.open !== '1') return;
+          body.innerHTML = `<p class="detail-loading">${
+            escapeHtml(error.message || '读取作业内容失败，请稍后重试。')
+          }</p>`;
+        }
+      }
+
+      function setDownloadBusy(button, busy, label) {
+        if (!button) return;
+        const action = button.querySelector('.att-action') || button.querySelector('[data-busy-label]');
+        if (busy) {
+          button.dataset.busy = '1';
+          button.disabled = true;
+          if (action) {
+            button.dataset.idleLabel = action.textContent;
+            action.textContent = '下载中…';
+          }
+        } else {
+          delete button.dataset.busy;
+          button.disabled = false;
+          if (action && label) action.textContent = label;
+          else if (action && button.dataset.idleLabel) action.textContent = button.dataset.idleLabel;
+        }
+      }
+
+      async function downloadAttachment(taskId, uploadId, button) {
+        if (button.dataset.busy === '1') return;
+        setDownloadBusy(button, true);
+        try {
+          const result = await requestJSON(
+            `/api/homework/${encodeURIComponent(taskId)}/attachments/${encodeURIComponent(uploadId)}/download`,
+            { method: 'POST', body: '{}', timeout: 300000 }
+          );
+          const note = result.converted ? '（平台只提供转码后的 PDF）' : '';
+          showToast(`已保存到桌面：${result.name}${note}`);
+        } catch (error) {
+          console.error('[作业备忘] 下载附件失败：', error);
+          showToast(error.message || '下载附件失败，请稍后重试。', 'error');
+        } finally {
+          setDownloadBusy(button, false);
+        }
+      }
+
+      async function downloadAllAttachments(taskId, button) {
+        if (button.dataset.busy === '1') return;
+        button.dataset.busy = '1';
+        button.disabled = true;
+        const idleText = button.textContent;
+        button.textContent = '下载中…';
+        try {
+          const result = await requestJSON(
+            `/api/homework/${encodeURIComponent(taskId)}/attachments/download`,
+            { method: 'POST', body: '{}', timeout: 600000 }
+          );
+          const failed = Array.isArray(result.failed) ? result.failed : [];
+          if (failed.length) {
+            showToast(`${result.message}：${failed[0].name} 等未成功`, 'error');
+          } else {
+            showToast(result.message || '已保存到桌面');
+          }
+        } catch (error) {
+          console.error('[作业备忘] 批量下载附件失败：', error);
+          showToast(error.message || '下载附件失败，请稍后重试。', 'error');
+        } finally {
+          delete button.dataset.busy;
+          button.disabled = false;
+          button.textContent = idleText;
+        }
+      }
+
       function renderTask(item, index) {
         const level = item.meta.level;
         const due = new Date(item.dueDate);
@@ -4470,6 +4921,18 @@
         const typeChip = item.type
           ? `<span class="type-chip">${escapeHtml(item.type)}</span>`
           : '';
+        const detailId = String(item.id);
+        const detailOpen = state.openDetails.has(detailId);
+        const cachedDetail = state.details.get(detailId);
+        const attachmentCount = cachedDetail && Array.isArray(cachedDetail.attachments)
+          ? cachedDetail.attachments.length
+          : 0;
+        const countBadge = attachmentCount
+          ? `<span class="task-detail__count" data-detail-count>· ${attachmentCount} 个附件</span>`
+          : '<span class="task-detail__count" data-detail-count hidden></span>';
+        const detailBodyHtml = cachedDetail
+          ? renderDetailBody(cachedDetail)
+          : '<p class="detail-loading">正在读取作业内容…</p>';
 
         return `
           <article class="task task--${level}" data-task-id="${escapeHtml(item.id)}" data-level="${level}" style="--task-index:${index}">
@@ -4495,6 +4958,22 @@
               </div>
               <h3 class="task-title">${escapeHtml(item.name)}</h3>
               ${note}
+              <div class="task-detail" data-detail-id="${escapeHtml(item.id)}" data-open="${detailOpen ? '1' : '0'}">
+                <button
+                  class="task-detail__toggle"
+                  type="button"
+                  data-toggle-detail="${escapeHtml(item.id)}"
+                  aria-expanded="${detailOpen ? 'true' : 'false'}"
+                  aria-label="${detailOpen ? '收起' : '查看'}「${escapeHtml(item.name)}」的作业内容与附件"
+                >
+                  <svg class="icon" aria-hidden="true"><use href="#i-chevron"></use></svg>
+                  <span data-detail-label>${detailOpen ? '收起作业内容' : '查看作业内容'}</span>
+                  ${countBadge}
+                </button>
+                <div class="task-detail__body" data-detail-body ${detailOpen ? '' : 'hidden'}>${
+                  detailOpen ? detailBodyHtml : ''
+                }</div>
+              </div>
               <div class="task-meta">
                 <span class="task-due" title="${escapeHtml(formatFullDate(due))}">
                   <svg class="icon" aria-hidden="true"><use href="#i-calendar"></use></svg>
@@ -4633,7 +5112,36 @@
         updateStats(items);
         updateFocusCard(items);
         renderBoard(items);
+        hydrateOpenDetails();
         state.renderedAt = Date.now();
+      }
+
+      function hydrateOpenDetails() {
+        document.querySelectorAll('.task-detail[data-open="1"]').forEach((box) => {
+          const taskId = box.dataset.detailId;
+          const body = box.querySelector('[data-detail-body]');
+          if (!taskId || !body) return;
+          const cached = state.details.get(taskId);
+          if (cached) {
+            body.innerHTML = renderDetailBody(cached);
+            return;
+          }
+          if (body.dataset.filling === '1') return;
+          body.dataset.filling = '1';
+          ensureDetail(taskId)
+            .then((detail) => {
+              if (box.dataset.open === '1') body.innerHTML = renderDetailBody(detail);
+              updateDetailCount(taskId);
+            })
+            .catch(() => {
+              if (box.dataset.open === '1') {
+                body.innerHTML = '<p class="detail-loading">读取作业内容失败，收起后重新展开可再试一次。</p>';
+              }
+            })
+            .finally(() => {
+              delete body.dataset.filling;
+            });
+        });
       }
 
       /* ==========================================================
@@ -4864,6 +5372,11 @@
         try {
           const payload = await fetchHomeworkList({ force });
           state.assignments = payload.assignments;
+          if (force) state.details.clear();
+          const liveIds = new Set(state.assignments.map((item) => String(item.id)));
+          [...state.openDetails].forEach((id) => {
+            if (!liveIds.has(id)) state.openDetails.delete(id);
+          });
           state.hasLoaded = true;
           state.authRequired = false;
           state.auth.code = '';
@@ -4877,6 +5390,8 @@
           renderAll();
 
           if (!fromPeer) broadcastDataChanged();
+
+          prefetchDetailCounts(state.assignments).catch(() => {});
 
           if (manual) {
             const count = getVisibleItems().length;
@@ -5193,6 +5708,7 @@
       function updateLiveView() {
         if (document.hidden || state.loading || state.pendingCompletions.size > 0) return;
         if (els.authDialog.open) return;
+        if (document.querySelector('.task-detail[data-open="1"]')) return;  // 正在看正文，别把卡片重绘掉
         if (Date.now() - state.renderedAt < 28000) return;
 
         const activeElement = document.activeElement;
@@ -5276,6 +5792,29 @@
       });
 
       els.taskList.addEventListener('click', (event) => {
+        const toggleButton = event.target.closest('[data-toggle-detail]');
+        if (toggleButton) {
+          const card = toggleButton.closest('.task');
+          if (card) toggleDetail(toggleButton.dataset.toggleDetail, card);
+          return;
+        }
+
+        const downloadAllButton = event.target.closest('[data-download-all]');
+        if (downloadAllButton) {
+          downloadAllAttachments(downloadAllButton.dataset.downloadAll, downloadAllButton);
+          return;
+        }
+
+        const attachmentButton = event.target.closest('[data-download-att]');
+        if (attachmentButton) {
+          downloadAttachment(
+            attachmentButton.dataset.downloadTask,
+            attachmentButton.dataset.downloadAtt,
+            attachmentButton
+          );
+          return;
+        }
+
         const completeButton = event.target.closest('[data-complete-id]');
         if (completeButton) {
           handleComplete(completeButton.dataset.completeId, completeButton);

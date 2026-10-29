@@ -1,7 +1,7 @@
 # 作业备忘 · 项目交接文档
 
 - 项目：作业备忘（Homework Desk）
-- 版本：1.3.1（2026-10-28：新增外观主题 + 自定义主题导入，悬浮球跟着换色，见第 2 章「外观主题」）
+- 版本：1.4.3（2026-10-29：作业内容 / 附件原样下载（第 3 章），系统要求变硬门槛（2.x「运行环境门槛」））
 - 文档更新：2026-10-28
 - 形态：Windows 桌面应用（Python + pywebview/WebView2）
 - 数据源：深圳大学优课（TronClass）`https://lms.szu.edu.cn/api/todos`
@@ -281,6 +281,34 @@ CreateWindowExW(
 - **启动兜底**：`prefs` 里的主题 id 找不到（主题被删、手改过文件）时，`AppContext`
   退回默认暖色并把 `prefs` 纠正掉，避免「一个都没选中」。
 
+### 运行环境门槛（1.4.3）
+
+主界面走 WebView2，所以「能跑」实际上由 Edge 的支持矩阵决定，不是由 Python 决定：
+
+| 项 | 要求 | 由谁保证 |
+| --- | --- | --- |
+| CPU/系统位数 | 仅 64 位 | `installer.iss` 的 `ArchitecturesAllowed=x64compatible` |
+| Windows 版本 | 10.0.17763（Win10 1809）及以上 | `installer.iss` 的 `MinVersion` |
+| WebView2 Runtime | 必须存在 | 启动时 `ensure_webview2()` 自检 |
+| .NET Framework | 4.7.2+（pythonnet 用） | Win10 1809 起系统自带 4.8 |
+
+两道检查的分工：
+
+- **安装期**：`MinVersion=10.0.17763` 直接拦下 Win7/8/8.1 —— Edge 从 109 版起不再支持这些系统，
+  WebView2 自然也没有。打包进去的 Python 3.13 本身还支持 Win8.1，但 UI 层跑不起来，
+  与其让用户装完发现闪退，不如在第一步就说清楚。
+- **启动期**：`webview2_version()` 按 HKLM → WOW6432Node → HKCU 顺序读
+  `Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}` 的 `pv`。
+  三处都要看：64 位常规安装写 HKLM、旧装机包可能只写 WOW6432Node、免管理员的
+  Evergreen Standalone 写 HKCU。`pv` 为 `0.0.0.0` 视为未安装。
+- 缺失时 `ensure_webview2()` 弹 `MB_YESNO | MB_ICONERROR | MB_TOPMOST`，点「是」用
+  `webbrowser.open()` 打开 `https://go.microsoft.com/fwlink/p/?LinkId=2124703`，然后用返回码 3 退出。
+
+**为什么必须自己检测**：程序是 `console=False` 的 windowed 应用，没有控制台；
+pywebview 拿不到 WebView2 时只是抛异常，用户看到的就是「双击没反应」。
+检测点放在 `main()` 里 `acquire_single_instance()` 之后、`hs.APP_HTML.exists()` 之前 ——
+已有实例在跑时直接唤回，不做多余检查。
+
 ### 关键文件
 
 | 文件 | 责任 |
@@ -333,6 +361,9 @@ CreateWindowExW(
 | GET | `/api/homework?refresh=1` | 获取作业；`refresh=1` 绕过服务端短缓存 |
 | POST | `/api/login` | 手动登录；支持图形验证码 |
 | POST | `/api/logout` | 退出并清除登录信息 |
+| GET | `/api/homework/{id}/detail` | 作业正文（已清洗 HTML）+ 附件清单；服务端缓存 10 分钟 |
+| POST | `/api/homework/{id}/attachments/{uploadId}/download` | 下载单个附件到桌面 |
+| POST | `/api/homework/{id}/attachments/download` | 下载该作业全部附件到桌面 |
 | POST | `/api/homework/{id}/complete` | 仅本机标记完成 |
 | GET | `/ball.html`（`/ball`） | 旧版悬浮球页面（程序不再使用，路由保留） |
 
@@ -387,6 +418,36 @@ CreateWindowExW(
 服务端支持 `end_time` / `due_at` / `deadline` 等截止时间字段别名，类型映射表位于
 `homework_server.py` 的 `TYPE_LABELS`。如果学校字段名变化，优先修改
 `normalize_todos()` 和字段取值处。
+
+### 3.5 作业正文与附件（1.4.2）
+
+`/api/todos` 只返回 `id / title / course_name / end_time / type` 五个有用字段，
+**没有正文也没有附件**。正文和附件必须再按活动 id 查详情：
+
+| 用途 | 上游接口 | 要点 |
+| --- | --- | --- |
+| 作业详情 | `GET /api/activities/{activity_id}` | 正文在 `data.description`（富文本 HTML），附件在 `uploads[]`；`uploads` 元素形如 `{id, name, size, type, allow_download, key}` |
+| 附件原文件直链 | `GET /api/uploads/{upload_id}/url` | 返回 `{url}`；指向 `/download/file/{key}`，**原文件**，文件名与格式不变（首选） |
+| 附件转码 PDF 直链 | `GET /api/uploads/document/{upload_id}/url` | 返回 `{status, url}`；指向 `/download/processed/{key}.pdf`，只作兜底 |
+
+踩过的坑：
+
+- **两条直链接口给的东西不一样，别选错**：
+  - `/api/uploads/document/{id}/url` → `/download/processed/{key}.pdf`，是平台转码后的 **PDF**；
+  - `/api/uploads/{id}/url` → `/download/file/{key}`，是**原文件**（docx 还是 docx）。
+  1.4.1 只用了前者，导致 docx 存成 `.pdf`；1.4.2 起先取原文件接口，失败才退回 PDF 兜底。
+  签名是按路径算的，自己拼 `download/original/...` 一定 403，必须走接口换链。
+- 前端点击下载走 `POST`，但**请求体没人读**。`BaseHTTPRequestHandler` 不会替你把 body
+  丢掉，剩余字节会留在 keep-alive 连接里，下一个请求行被解析成 `{}POST ...` 直接 501。
+  现在下载路由开头统一 `self._discard_body()`。
+- 附件名里的中文从 `Content-Disposition` 取出来是乱码（服务端把 UTF-8 字节塞进 header，
+  requests 按 latin-1 解析）。`_filename_from_header()` 做了 latin-1 → utf-8 的还原；
+  实际落盘优先用 `uploads[].name`，基本用不到 header。
+- 正文 HTML 必须清洗再塞进 `innerHTML`：`sanitize_description_html()` 用 `HTMLParser`
+  按白名单重建标签（p/br/列表/表格/a[href]/img[src] 等），丢弃 script/style/iframe/表单
+  和一切 `on*` 属性、行内样式；`javascript:` 链接退化成纯文本 `<span>`。
+- 详情缓存 10 分钟（`AppContext._detail_cache`），手动刷新（`refresh=1`）时前端清空
+  `state.details` 重新取；列表预取只用两个并发，失败静默。
 
 ---
 
@@ -448,7 +509,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 输出：
 
 - `dist\HomeworkDesk\HomeworkDesk.exe`：便携版程序目录
-- `..\version\作业备忘-安装程序-1.3.1.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
+- `..\version\作业备忘-安装程序-1.4.3.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
 
 ### 5.3 单独构建
 
@@ -479,12 +540,12 @@ py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 构建产物落在仓库外的 `..\version\`，仓库里**只保留当前版本**的安装包：
 
 ```powershell
-# 1. 构建，输出 ..\version\作业备忘-安装程序-1.3.1.exe
+# 1. 构建，输出 ..\version\作业备忘-安装程序-1.4.3.exe
 .\build.ps1
 
 # 2. 换掉 release 里的旧包
 Remove-Item .\release\*.exe
-Copy-Item ..\version\作业备忘-安装程序-1.3.1.exe .\release\
+Copy-Item ..\version\作业备忘-安装程序-1.4.3.exe .\release\
 
 # 3. 重算校验值
 #    文件名含中文，必须用 UTF-8 无 BOM 写，否则在别的编辑器里会变成 ???? 
@@ -661,6 +722,42 @@ $hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
 > （曾经因为 `themeState.appliedKeys` 没初始化，`applyThemeVars` 直接抛异常，
 > 整张面板渲染成空）；悬浮球颜色不跟随就查 `context.on_theme_changed` 是否在
 > `create_windows()` 之后被挂上（挂之前球用 `DEFAULT_PALETTE`）。
+
+1.4.1 作业内容 / 附件下载验证（真实账号，11 条待办）：
+
+| 检查 | 结果 |
+| --- | --- |
+| `GET /api/activities/{id}` 可用性 | 11 条待办全部 200；正文 43–3736 字不等，其中 5 条为空（老师没写说明） |
+| `GET /api/homework/{id}/detail` | 返回 `descriptionHtml / descriptionText / attachments`；附件数量与上游一致（0–4 个） |
+| 正文清洗 | `script` / `onclick` / `onerror` / `javascript:` / `iframe` 全部剔除；`<br>`、表格、`<a href>` 保留；脏 HTML（未闭合 `<p>`）清洗后标签完全配对 |
+| 单个附件下载 | docx → 桌面得到 `第二章作业(1).docx`（12057 B，`PK` 头，与平台 `size` 一致） |
+| 原文件附件 | zip / md / 图片走 `download/file/{key}`，字节数与上游 `size` 一致（md 3597 B） |
+| 全部下载 | 2 个附件的作业一次存下 `.docx` + `.pptx`，失败的单个不影响其他 |
+| 重名处理 | 连续下载 3 次得到 `(1) (2)`，桌面已有文件不被覆盖 |
+| 桌面路径 | `SHGetFolderPathW(CSIDL_DESKTOPDIRECTORY)` → `C:\Users\JASISION\Desktop`，OneDrive 重定向也跟得上 |
+| keep-alive 污染 | 修复前：单发成功后紧接着的批量请求返回 501（`{}POST`）；修复后连发两个 POST 均 200 |
+| 展开状态保持 | 展开后等 35 秒（超过 28 秒自动刷新阈值），卡片仍保持展开、正文不丢 |
+| 后台预取 | 首屏 11 张卡片在 ~2 秒内补齐「N 个附件」，点开直接出内容无需等待 |
+
+1.4.3 运行环境检测验证：
+
+| 检查 | 结果 |
+| --- | --- |
+| 注册表探测 | 本机读到 `pv=156.0.4314.50`（HKLM WOW6432Node），`ensure_webview2()` 直接返回 True，不弹窗 |
+| 缺失 + 点「否」 | 打桩 `MessageBoxW` 返回 7（IDNO）→ 函数返回 False，`webbrowser.open` 未被调用 |
+| 缺失 + 点「是」 | 打桩返回 6（IDYES）→ 打开 `go.microsoft.com/fwlink/p/?LinkId=2124703`，函数仍返回 False（不继续启动） |
+| 安装拦截 | `MinVersion=10.0.17763` 通过 ISCC 编译，写入 setup；Win7 实机未验证（无环境），依据 Inno 官方语义 |
+| 32 位系统 | `ArchitecturesAllowed=x64compatible`，安装向导第一步拒绝；未实机验证 |
+
+1.4.2 原样下载验证（真实账号，12 个附件全量）：
+
+| 检查 | 结果 |
+| --- | --- |
+| 原文件接口 | `GET /api/uploads/{id}/url` 对 12 个附件全部 200，返回 `/download/file/{key}` 签名链接 |
+| 字节数一致性 | 12 个附件下载后的大小与上游 `uploads[].size` **逐一相等**（docx 12057 / 494418、pptx 308694、ppt 177628、zip 63709280、md 3597、pdf 179402…） |
+| 格式一致性 | doc/docx/pptx/ppt 均以 `PK\x03\x04`（或 OLE `D0 CF 11 E0`）开头，即真实 Office 文件，无一个被转成 PDF |
+| 兜底路径 | 把原文件接口改成不存在的路径后，自动退回 `document/url` 得到 `.pdf` 并置 `converted=true`；恢复后立即回到 `.docx` |
+| UI 提示 | 无头 Edge 点击下载，toast 为「已保存到桌面：自然语言处理 期末大作业格式(1).doc」，不再出现 PDF 后缀或转码说明 |
 
 未使用真实账号验证的情形：
 
@@ -878,7 +975,7 @@ $hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
 | --- | --- |
 | 远程 | `https://github.com/JASISOON/homework.git` |
 | 分支 | `main`（跟踪 `origin/main`） |
-| 当前版本 | 1.3.1 |
+| 当前版本 | 1.4.3 |
 
 ### 日常更新流程
 
@@ -897,8 +994,8 @@ git push origin main
 
 ### 在 Releases 里发布
 
-1. GitHub 仓库 → Releases → Draft a new release，tag 填 `v1.3.1`。
-2. 附件上传 `release/作业备忘-安装程序-1.3.1.exe`。
+1. GitHub 仓库 → Releases → Draft a new release，tag 填 `v1.4.3`。
+2. 附件上传 `release/作业备忘-安装程序-1.4.3.exe`。
 3. 说明直接复制 `CHANGELOG.md` 里对应版本的段落。
 4. 正文里附上 `SHA256SUMS.txt` 的哈希值。
 

@@ -2,7 +2,7 @@
 ; 编译：ISCC.exe installer.iss
 
 #define MyAppName "作业备忘"
-#define MyAppVersion "1.3.1"
+#define MyAppVersion "1.4.3"
 #define MyAppPublisher "个人项目"
 #define MyAppExeName "HomeworkDesk.exe"
 #define MyAppId "{{8F2B8F42-6F6D-4D7E-9B2A-2E5C5D1B7A31}"
@@ -21,7 +21,7 @@ AllowNoIcons=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\version
-OutputBaseFilename=作业备忘-安装程序-1.3.1
+OutputBaseFilename=作业备忘-安装程序-1.4.3
 SetupIconFile=homework-desk.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
@@ -30,10 +30,13 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+; 界面是 WebView2 渲染的，Win11 及 Win10 1803+ 才自带；Win7/8/8.1 上 Edge/WebView2 已停止支持，
+; 装上去也只会闪退，所以直接在安装阶段拦住（10.0.17763 = Windows 10 1809）。
+MinVersion=10.0.17763
 CloseApplications=yes
 RestartApplications=no
 AppMutex=Local\HomeworkDeskDesktopApp
-VersionInfoVersion=1.3.1.0
+VersionInfoVersion=1.4.3.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} 安装程序
 VersionInfoProductName={#MyAppName}

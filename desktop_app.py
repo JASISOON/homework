@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 import webbrowser
+import winreg
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -301,6 +302,67 @@ def show_message(text: str, title: str = APP_TITLE, flags: int = 0x40) -> None:
         ctypes.windll.user32.MessageBoxW(None, text, title, flags)
     except Exception:
         pass
+
+
+# WebView2 Runtime 在注册表里的固定产品 ID（Edge Update 的客户端项）。
+WEBVIEW2_CLIENT_ID = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+# 微软官方的 Everest 引导下载页（跳转到最新运行时安装包）。
+WEBVIEW2_DOWNLOAD_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+
+
+def webview2_version() -> str:
+    """返回本机已安装的 WebView2 Runtime 版本，没装返回空串。
+
+    三个位置都要看：64 位注册表、32 位（WOW6432Node）注册表、当前用户安装
+    （免管理员的 Evergreen Standalone 会写在 HKCU）。任一命中即可。
+    """
+    keys = (
+        (winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_CLIENT_ID}"),
+        (winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_CLIENT_ID}"),
+        (winreg.HKEY_CURRENT_USER, rf"Software\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_CLIENT_ID}"),
+    )
+    for root, path in keys:
+        try:
+            with winreg.OpenKey(root, path) as key:
+                value, _ = winreg.QueryValueEx(key, "pv")
+        except OSError:
+            continue
+        version = str(value or "").strip()
+        if version and version != "0.0.0.0":
+            return version
+    return ""
+
+
+def ensure_webview2() -> bool:
+    """没有 WebView2 Runtime 就给一句人话，别让用户对着「双击没反应」发呆。
+
+    windowed 模式没有控制台，pywebview 在这种环境下只会静默抛异常，
+    所以必须在创建窗口之前自己拦一道。
+    """
+    version = webview2_version()
+    if version:
+        logging.getLogger(hs.APP_NAME).debug("WebView2 Runtime %s", version)
+        return True
+
+    logging.getLogger(hs.APP_NAME).error("未检测到 WebView2 Runtime，无法创建主窗口。")
+    text = (
+        "作业备忘的界面需要 Microsoft Edge WebView2 运行时，但这台电脑上没有装。\n\n"
+        "点「是」用浏览器打开微软官方下载页，装好后再启动本程序；\n"
+        "点「否」直接退出。\n\n"
+        "提示：Windows 11 以及更新到 2022 年 11 月之后的 Windows 10 都自带这个组件，\n"
+        "出现这个提示通常是因为系统是 LTSC / Server / 精简版。"
+    )
+    flags = 0x00000004 | 0x00000010 | 0x00040000  # MB_YESNO | MB_ICONERROR | MB_TOPMOST
+    try:
+        choice = ctypes.windll.user32.MessageBoxW(None, text, APP_TITLE, flags)
+    except Exception:
+        return False
+    if choice == 6:  # IDYES
+        try:
+            webbrowser.open(WEBVIEW2_DOWNLOAD_URL)
+        except Exception:
+            logging.getLogger(hs.APP_NAME).warning("打开 WebView2 下载页失败", exc_info=True)
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -1585,6 +1647,9 @@ def main() -> int:
             flags=0x40,
         )
         return 0
+
+    if not ensure_webview2():
+        return 3
 
     if not hs.APP_HTML.exists():
         missing = hs.APP_HTML
