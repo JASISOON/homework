@@ -26,4 +26,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Inno Setup 构建失败。' }
 
 Write-Host ''
 Write-Host '构建完成：' -ForegroundColor Green
-Get-ChildItem (Join-Path $PSScriptRoot '..\version\*.exe') | Select-Object Name, Length, LastWriteTime
+Get-ChildItem (Join-Path $PSScriptRoot '..\version\*.exe') |
+    Select-Object Name, Length, LastWriteTime

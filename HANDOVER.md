@@ -37,6 +37,8 @@
 - 主界面和悬浮球数据通过本地 API + BroadcastChannel 同步。
 - 加密凭据自动登录；会话失效时自动使用保存的凭据重新登录。
 - 外观主题：内置暖色 / 亮色 / 深色三套，可导入自定义主题，悬浮球同步换色。
+- 交作业（1.5.0）：选文件/选文件夹、写说明、存草稿、提交、撤回；可打包成 ZIP 并命名；
+  提交前二次确认。
 - 安装程序、桌面/开始菜单快捷方式、开机自启动、卸载程序。
 
 ### 窗口形态（2026-10 改版）
@@ -326,7 +328,7 @@ pywebview 拿不到 WebView2 时只是抛异常，用户看到的就是「双击
 | `installer.iss` | Inno Setup 安装脚本 |
 | `ChineseSimplified.isl` | Inno Setup 简体中文语言文件 |
 | `build.ps1` | 一键重新打包 EXE 和安装程序（产物到 `..\version`） |
-| `release/` | 对外分发的安装包（只留当前版本）与 `SHA256SUMS.txt` |
+| `release/` | 对外分发的安装包（只留当前版本）和 `SHA256SUMS.txt` |
 | `preview.png` / `preview-ball.png` / `preview-menu.png` / `preview-card.png` | README 用的主界面、悬浮球、右键菜单、概览卡片预览图（演示数据，不含真实作业） |
 
 ---
@@ -364,6 +366,9 @@ pywebview 拿不到 WebView2 时只是抛异常，用户看到的就是「双击
 | GET | `/api/homework/{id}/detail` | 作业正文（已清洗 HTML）+ 附件清单；服务端缓存 10 分钟 |
 | POST | `/api/homework/{id}/attachments/{uploadId}/download` | 下载单个附件到桌面 |
 | POST | `/api/homework/{id}/attachments/download` | 下载该作业全部附件到桌面 |
+| GET | `/api/homework/{id}/submission` | 我在这条作业上的提交情况（最新一版 + 草稿） |
+| POST | `/api/homework/{id}/submit` | 交作业（multipart：`files[]` + `comment` + `draft` + `zip` + `zipName`） |
+| POST | `/api/homework/{id}/retract` | 撤回某次提交（body：`{submissionId}`） |
 | POST | `/api/homework/{id}/complete` | 仅本机标记完成 |
 | GET | `/ball.html`（`/ball`） | 旧版悬浮球页面（程序不再使用，路由保留） |
 
@@ -449,6 +454,53 @@ pywebview 拿不到 WebView2 时只是抛异常，用户看到的就是「双击
 - 详情缓存 10 分钟（`AppContext._detail_cache`），手动刷新（`refresh=1`）时前端清空
   `state.details` 重新取；列表预取只用两个并发，失败静默。
 
+### 3.6 交作业（1.5.0）
+
+网页端学生交作业走的是这四个接口（都是对着已登录会话抓出来的，**改动前先验一遍**）：
+
+| 用途 | 接口 | 要点 |
+| --- | --- | --- |
+| 当前账号 id | `GET /api/profile` | 路径里的 `{student_id}` 要用它；登录后缓存，别每单都查 |
+| 我的提交列表 | `GET /api/activities/{aid}/students/{sid}/submission_list` | 返回 `{list:[...]}`；`is_draft` 区分草稿，`is_latest_version` 挑最新一版 |
+| 创建 / 更新提交 | `POST /api/course/activities/{aid}/submissions` | 改草稿时改 `PUT` 并在 body 里带 `submission_id`；返回 `{submission:{...}}` |
+| 撤回 | `PUT /api/submissions/{sid}/retract` | body 发 `{}` 即可 |
+| 建上传记录 | `POST /api/uploads` | `{name,size,parent_type,parent_id,is_scorm,is_wmpkg}` → `{id,upload_url,storage_type,transcoder}` |
+| 传字节 | `PUT {upload_url}` | 一般是 multipart 的 `file` 字段；`transcoder=WRPC` 时改成原始 body + `Content-Type` |
+| S3 回调 | `POST /internal-api/upload/callback/{upload_id}` | 仅 `storage_type=S3` 需要，body `{file_key: upload_id}` |
+
+提交体（照抄网页）：
+
+```json
+{
+  "comment": "文字说明",
+  "uploads": ["50231"],
+  "slides": [],
+  "is_draft": false,
+  "mode": "normal",
+  "other_resources": [],
+  "uploads_in_rich_text": []
+}
+```
+
+踩过 / 要注意的点：
+
+- **`parent_type` 不确定**：网页里只在评论和资源场景写过 `learning_activity` / `source_file`，
+  交作业那一处是压缩后的变量。现在的做法是先试 `homework`，被校验拦（错误信息里带 parent）
+  再退 `learning_activity`；**只有校验失败才会重试**，失败不落记录，不会产生垃圾。
+- **七牛云没实现**：`storage_type=QINIU` 需要 `GET /api/uptoken?id=` 换 token 再走
+  `mkblk`/`mkfile` 分片，本站不用这条通道，遇到直接报错让用户去网页交。
+- **`cgi` 模块已经没了**：Python 3.13 起标准库删掉了 `cgi`，multipart 是自己解的
+  （`parse_multipart()`，按 boundary 切、只去掉边界那一个 `\r\n`，二进制内容原样保留）。
+  本地有一份临时自检脚本（`_probe_unit.py`，被 `.gitignore` 的 `_probe*.py` 挡住、不入库），
+  里面用了含 `\r\n` 和 `\x00\xff` 的二进制样例；改解析器之前先跑它。
+- **前端选文件夹**：`<input webkitdirectory>`，相对路径在 `file.webkitRelativePath`；
+  上传时用 `form.append('files', file, relativePath)` 把相对路径当文件名带上去，
+  服务端打 ZIP 时按它建目录，不打包时只取 basename。
+- **上传走 XHR 而不是 fetch**：要 `upload.onprogress` 显示百分比；超时给到 15 分钟。
+- **提交不可逆**：界面上一定先弹确认框（`<dialog id="submitDialog">`），
+  交完把 `state.submit` 里的选择清空并刷新状态块，避免用户以为没交又点一次。
+- 交完/撤回后要 `pop` 掉 `_detail_cache` 里那条，否则附件数量与状态会旧 10 分钟。
+
 ---
 
 ## 4. 安全模型
@@ -508,8 +560,8 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 输出：
 
-- `dist\HomeworkDesk\HomeworkDesk.exe`：便携版程序目录
-- `..\version\作业备忘-安装程序-1.4.3.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
+- `dist\HomeworkDesk\HomeworkDesk.exe`：PyInstaller 的 onedir 产物目录
+- `..\version\作业备忘-安装程序-1.5.1.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
 
 ### 5.3 单独构建
 
@@ -540,19 +592,18 @@ py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 构建产物落在仓库外的 `..\version\`，仓库里**只保留当前版本**的安装包：
 
 ```powershell
-# 1. 构建，输出 ..\version\作业备忘-安装程序-1.4.3.exe
+# 1. 构建，输出 ..\version\作业备忘-安装程序-1.5.1.exe
 .\build.ps1
 
 # 2. 换掉 release 里的旧包
 Remove-Item .\release\*.exe
-Copy-Item ..\version\作业备忘-安装程序-1.4.3.exe .\release\
+Copy-Item ..\version\作业备忘-安装程序-1.5.1.exe .\release\
 
 # 3. 重算校验值
 #    文件名含中文，必须用 UTF-8 无 BOM 写，否则在别的编辑器里会变成 ???? 
-$name = (Get-ChildItem .\release\*.exe).Name
-$hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
-[System.IO.File]::WriteAllText("$PWD\release\SHA256SUMS.txt", "$hash  $name`n",
-    (New-Object System.Text.UTF8Encoding $false))
+Get-ChildItem .\release\*.exe | ForEach-Object {
+    "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash)  $($_.Name)"
+} | Set-Content .\release\SHA256SUMS.txt -Encoding utf8
 ```
 
 安装包约 13 MB，小于 GitHub 单文件限制，可以随 `release/` 一起提交；
@@ -573,6 +624,20 @@ $hash = (Get-FileHash ".\release\$name" -Algorithm SHA256).Hash
 - 重复双击快捷方式会唤回已收起的窗口，不会产生第二个实例。
 - 安装程序创建桌面、开始菜单和 Startup 快捷方式，路径指向安装后的 EXE。
 - 图形验证码前端流程（显示、重试）通过模拟接口验证。
+
+交作业（1.5.0）已验证 / 未验证：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 读提交状态 | 真实账号 `GET /api/activities/{aid}/students/{sid}/submission_list` 返回 `{list:[]}`，接口收敛为 `submitted/draft=null` |
+| 学号获取 | `GET /api/profile` → `id=116483`，与网页里 `userId=` 一致 |
+| multipart 解析 | 本地自检脚本：含 `\r\n`、`\x00\xff` 的两段文件逐字节还原，中文字段名/文件名正常 |
+| ZIP 打包 | 同一脚本：两层目录、同名冲突破名、`提交说明.txt` 均在包内；超长包名截到 60 字 |
+| 面板渲染 | 无头 Edge 打开真实数据：Badge「未提交」、选文件/选文件夹/打包开关/说明/存草稿/提交 全部在位 |
+| 选文件与打包提示 | 用 CDP 往 input 塞两个文件 → 列表显示 2 个 + 大小；勾打包 → 「将打包成 1 个 ZIP（原文件 2 个）」 |
+| 确认弹窗 | 弹窗标题/正文/文件清单/警告/按钮文案正确；取消后不发任何请求，已选文件仍在 |
+| 已提交 / 草稿两种状态 | mock 服务喂数据：显示「已提交 · 时间 + 文件 + 撤回」，主按钮变「再次提交」；草稿显示草稿徽标与时间 |
+| **真实提交 / 存草稿 / 撤回 / 上传字节** | **未验证**。往平台写东西需要用户点头，第一次真要交之前建议先拿一条无关作业试 |
 
 悬浮球验证（原生分层窗口版）：
 

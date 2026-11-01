@@ -30,6 +30,7 @@ import base64
 import ctypes
 import ctypes.wintypes as wt
 import hashlib
+import io
 import json
 import logging
 import os
@@ -39,6 +40,7 @@ import socket
 import sys
 import threading
 import time
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import escape, unescape
@@ -62,7 +64,7 @@ import themes as theme_mod
 
 
 APP_NAME = "HomeworkDesk"
-APP_VERSION = "1.4.3"
+APP_VERSION = "1.5.1"
 APP_DIR = Path(__file__).resolve().parent
 
 
@@ -97,6 +99,19 @@ ACTIVITY_URL = LMS_BASE + "/api/activities/{activity_id}"
 #   /api/uploads/document/{id}/url   → 平台转码后的 PDF，只用于原文件接口不可用时兜底
 UPLOAD_ORIGINAL_URL_API = LMS_BASE + "/api/uploads/{upload_id}/url"
 UPLOAD_URL_API = LMS_BASE + "/api/uploads/document/{upload_id}/url"
+# 交作业（1.5.0）：先建上传记录 → 传字节 → 把 upload id 塞进提交体。
+# 这几个路径取自学生端网页自己发的请求，改动前请对照 HANDOVER.md。
+PROFILE_URL = LMS_BASE + "/api/profile"
+SUBMISSION_URL = LMS_BASE + "/api/course/activities/{activity_id}/students/{student_id}/submission"
+SUBMISSION_LIST_URL = (
+    LMS_BASE + "/api/activities/{activity_id}/students/{student_id}/submission_list"
+)
+SUBMISSION_CREATE_URL = LMS_BASE + "/api/course/activities/{activity_id}/submissions"
+SUBMISSION_RETRACT_URL = LMS_BASE + "/api/submissions/{submission_id}/retract"
+UPLOAD_CREATE_URL = LMS_BASE + "/api/uploads"
+UPLOAD_CALLBACK_URL = LMS_BASE + "/internal-api/upload/callback/{upload_id}"
+# 上传记录要挂一个父对象；作业附件在网页上是挂在活动上的。
+UPLOAD_PARENT_TYPES = ("homework", "learning_activity")
 AUTH_BASE = "https://authserver.szu.edu.cn"
 CHECK_CAPTCHA_URL = f"{AUTH_BASE}/authserver/checkNeedCaptcha.htl"
 CAPTCHA_IMAGE_URL = f"{AUTH_BASE}/authserver/getCaptcha.htl"
@@ -1136,6 +1151,128 @@ def _filename_from_header(header: str) -> str:
     return value
 
 
+@dataclass
+class FormFile:
+    """multipart 里的一个文件域。"""
+
+    field: str
+    filename: str
+    content_type: str
+    data: bytes
+
+
+def parse_multipart(body: bytes, content_type: str) -> tuple[dict[str, str], list[FormFile]]:
+    """自己解 multipart/form-data（3.13 起标准库的 cgi 模块已经删掉了）。"""
+    match = re.search(r'boundary="?([^";]+)"?', content_type or "", re.I)
+    if not match:
+        raise ValueError("上传请求缺少 multipart 边界。")
+    delimiter = b"--" + match.group(1).encode("utf-8")
+    fields: dict[str, str] = {}
+    files: list[FormFile] = []
+    for chunk in body.split(delimiter)[1:]:
+        if chunk.startswith(b"--"):
+            break  # 结束标记
+        part = chunk
+        if part.startswith(b"\r\n"):
+            part = part[2:]
+        if part.endswith(b"\r\n"):
+            part = part[:-2]
+        head, sep, data = part.partition(b"\r\n\r\n")
+        if not sep:
+            continue
+        headers: dict[str, str] = {}
+        for line in head.decode("utf-8", "replace").split("\r\n"):
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            headers[key.strip().lower()] = value.strip()
+        disposition = headers.get("content-disposition", "")
+        name_match = re.search(r'name="([^"]*)"', disposition)
+        file_match = re.search(r'filename="([^"]*)"', disposition)
+        field = name_match.group(1) if name_match else ""
+        if file_match is not None:
+            files.append(
+                FormFile(
+                    field=field,
+                    filename=file_match.group(1),
+                    content_type=headers.get("content-type", ""),
+                    data=data,
+                )
+            )
+        elif field:
+            fields[field] = data.decode("utf-8", "replace")
+    return fields, files
+
+
+# 一次提交最多带多少个文件、总共多少字节：本地服务要把它们读进内存再打包/上传。
+MAX_SUBMIT_FILES = 40
+MAX_SUBMIT_BYTES = 300 * 1024 * 1024
+
+
+def build_zip_archive(items: list[tuple[str, bytes]], note: str = "") -> bytes:
+    """把若干 (相对路径, 内容) 打成一个 zip；同名冲突自动改名。"""
+    buffer = io.BytesIO()
+    used: set[str] = set()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as archive:
+        for raw_name, data in items:
+            name = safe_filename(raw_name.replace("\\", "/").split("/")[-1] or "file")
+            parent = raw_name.replace("\\", "/").rsplit("/", 1)[0] if "/" in raw_name else ""
+            base, ext = (name.rsplit(".", 1) + [""])[:2] if "." in name else (name, "")
+            candidate = f"{parent}/{name}" if parent else name
+            index = 1
+            while candidate.lower() in used:
+                tail = f" ({index})"
+                stem = f"{base}{tail}.{ext}" if ext else f"{base}{tail}"
+                candidate = f"{parent}/{stem}" if parent else stem
+                index += 1
+            used.add(candidate.lower())
+            archive.writestr(candidate, data)
+        if note:
+            archive.writestr("提交说明.txt", note.encode("utf-8"))
+    return buffer.getvalue()
+
+
+def zip_display_name(raw: str, fallback: str) -> str:
+    """用户填的压缩包名 → 安全文件名（去非法字符、限长、补 .zip）。"""
+    name = str(raw or "").strip()
+    if not name:
+        name = fallback or "作业附件"
+    name = name.replace("\\", "/").split("/")[-1]
+    if name.lower().endswith(".zip"):
+        name = name[:-4]
+    name = safe_filename(name, "作业附件").strip(" .")
+    if not name:
+        name = "作业附件"
+    if len(name) > 60:
+        name = name[:60].rstrip(" .") or "作业附件"
+    return f"{name}.zip"
+
+
+def normalize_submission_payload(raw: Any) -> Optional[dict[str, Any]]:
+    """把上游的提交对象收敛成前端好用的样子。"""
+    if not isinstance(raw, dict) or not raw.get("id"):
+        return None
+    uploads = []
+    for item in raw.get("uploads") or []:
+        if not isinstance(item, dict):
+            continue
+        uploads.append(
+            {
+                "id": str(item.get("id") or ""),
+                "name": str(item.get("name") or "附件"),
+                "size": int(item.get("size") or 0),
+            }
+        )
+    return {
+        "id": str(raw.get("id")),
+        "isDraft": bool(raw.get("is_draft")),
+        "comment": str(raw.get("comment") or ""),
+        "submittedAt": str(raw.get("submitted_at") or ""),
+        "createdAt": str(raw.get("created_at") or ""),
+        "uploads": uploads,
+    }
+
+
 def cookies_to_json(cookies) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for cookie in cookies:
@@ -1212,6 +1349,7 @@ class SzuAuth:
         self.pending_login: Optional[dict[str, Any]] = None
         self._todos_cache: Optional[tuple[float, dict[str, Any]]] = None
         self._auto_started = False
+        self._student_id = 0
 
         saved_cookies = store.load_session()
         self.has_saved_session = bool(saved_cookies)
@@ -1700,10 +1838,19 @@ class SzuAuth:
         "X-Requested-With": "XMLHttpRequest",
     }
 
-    def _api_get_json(self, url: str) -> Any:
-        response = self.session.get(
+    def _api_json(
+        self,
+        method: str,
+        url: str,
+        payload: Any = None,
+        timeout: int = 30,
+        allow_404: bool = False,
+    ) -> Any:
+        response = self.session.request(
+            method,
             url,
-            timeout=30,
+            json=payload,
+            timeout=timeout,
             allow_redirects=False,
             headers={**self._API_HEADERS, "Referer": f"{LMS_BASE}/user/index"},
         )
@@ -1715,9 +1862,27 @@ class SzuAuth:
         if response.status_code in (401, 403):
             raise AuthRequired("登录会话已失效，请重新登录。")
         if response.status_code == 404:
+            if allow_404:
+                return None
             raise UpstreamError("深大优课找不到这条作业，可能已被老师删除。")
-        if response.status_code != 200:
-            raise UpstreamError(f"深大优课接口请求失败（HTTP {response.status_code}）。")
+        if response.status_code >= 400:
+            detail = ""
+            try:
+                body = response.json()
+            except ValueError:
+                body = None
+            if isinstance(body, dict):
+                detail = str(body.get("message") or "")
+                errors = body.get("errors")
+                if isinstance(errors, dict):
+                    first = next(iter(errors.values()), "")
+                    if isinstance(first, list):
+                        first = first[0] if first else ""
+                    if first:
+                        detail = f"{detail}：{first}" if detail else str(first)
+            raise UpstreamError(
+                detail or f"深大优课接口请求失败（HTTP {response.status_code}）。"
+            )
         content_type = response.headers.get("Content-Type", "")
         if "json" not in content_type.lower():
             raise AuthRequired("深大优课返回了登录页面，登录会话已失效。")
@@ -1725,6 +1890,191 @@ class SzuAuth:
             return response.json()
         except ValueError as exc:
             raise UpstreamError("深大优课返回的数据不是有效 JSON。") from exc
+
+    def _api_get_json(self, url: str) -> Any:
+        return self._api_json("GET", url)
+
+    # ------------------------------------------------------------------
+    # 交作业（1.5.0）
+    # ------------------------------------------------------------------
+    def student_id(self) -> int:
+        """当前账号的 user id：提交接口的路径里必须带它。"""
+        with self.lock:
+            if self._student_id:
+                return self._student_id
+        data = self._api_json("GET", PROFILE_URL)
+        try:
+            value = int((data or {}).get("id") or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if not value:
+            raise UpstreamError("读不到当前账号的信息，请重新登录后再试。")
+        with self.lock:
+            self._student_id = value
+        return value
+
+    def submission_state(self, activity_id: str) -> dict[str, Any]:
+        """我在这条作业上的提交情况：最新一版 + 是否存过草稿。"""
+        try:
+            sid = self.student_id()
+        except AuthRequired:
+            raise
+        with self.lock:
+            data = self._api_json(
+                "GET",
+                SUBMISSION_LIST_URL.format(activity_id=activity_id, student_id=sid),
+                allow_404=True,
+            )
+        items = []
+        if isinstance(data, dict) and isinstance(data.get("list"), list):
+            items = [item for item in data["list"] if isinstance(item, dict)]
+        latest = None
+        for item in items:
+            if item.get("is_latest_version") and not item.get("is_draft"):
+                latest = item
+                break
+        if latest is None:
+            for item in items:
+                if not item.get("is_draft"):
+                    latest = item
+        draft = None
+        for item in items:
+            if item.get("is_draft"):
+                draft = item
+        return {
+            "studentId": sid,
+            "submitted": normalize_submission_payload(latest),
+            "draft": normalize_submission_payload(draft),
+            "canRetract": bool(latest and latest.get("marked_submitted") is not False),
+        }
+
+    def upload_submission_file(
+        self,
+        activity_id: str,
+        filename: str,
+        data: bytes,
+        content_type: str = "",
+    ) -> dict[str, Any]:
+        """把一个文件传到优课的存储里，返回 {id, name, size}。
+
+        流程照抄网页：POST /api/uploads 建记录 → PUT 到返回的 upload_url →
+        S3 还要再打一次 callback。三条通道里只有 QINIU 没实现（本站不是）。
+        """
+        size = len(data)
+        if not size:
+            raise UpstreamError(f"「{filename}」是空文件，没有可上传的内容。")
+        try:
+            parent_id = int(activity_id)
+        except (TypeError, ValueError):
+            parent_id = 0
+
+        info: Any = None
+        last_error: Optional[UpstreamError] = None
+        for parent_type in UPLOAD_PARENT_TYPES:
+            meta = {
+                "name": filename,
+                "size": size,
+                "parent_type": parent_type,
+                "parent_id": parent_id,
+                "is_scorm": False,
+                "is_wmpkg": False,
+            }
+            try:
+                with self.lock:
+                    info = self._api_json("POST", UPLOAD_CREATE_URL, meta)
+                break
+            except UpstreamError as exc:
+                last_error = exc
+                LOG.info("建上传记录失败（parent_type=%s）：%s", parent_type, exc)
+                if "parent" not in str(exc).lower():
+                    raise
+        if isinstance(info, dict) and not info.get("id") and isinstance(info.get("data"), dict):
+            info = info["data"]
+        if not isinstance(info, dict) or not info.get("id"):
+            raise last_error or UpstreamError("深大优课没有返回上传凭证。")
+
+        upload_id = str(info.get("id"))
+        upload_url = str(info.get("upload_url") or info.get("uploadUrl") or "")
+        storage = str(info.get("storage_type") or "").upper()
+        transcoder = str(info.get("transcoder") or "").upper()
+        if not upload_url:
+            raise UpstreamError("深大优课没有给出上传地址。")
+        if storage == "QINIU":
+            raise UpstreamError("这条作业的附件存在七牛云上，本应用暂时不支持，请到网页提交。")
+        target = upload_url if upload_url.startswith(("http://", "https://")) else LMS_BASE + upload_url
+
+        if transcoder == "WRPC":
+            response = self.session.put(
+                target,
+                data=data,
+                timeout=600,
+                headers={"Content-Type": content_type or "application/octet-stream"},
+            )
+        else:
+            response = self.session.put(
+                target,
+                files={"file": (filename, data, content_type or "application/octet-stream")},
+                timeout=600,
+            )
+        if response.status_code >= 400:
+            raise UpstreamError(
+                f"上传「{filename}」失败（HTTP {response.status_code}），"
+                "如果是文件类型被拦，可以勾选打包成 ZIP 再提交。"
+            )
+        if storage == "S3":
+            file_key = info.get("file_key") or upload_id
+            with self.lock:
+                self._api_json(
+                    "POST",
+                    UPLOAD_CALLBACK_URL.format(upload_id=upload_id),
+                    {"file_key": file_key},
+                )
+        LOG.info("已上传附件：%s（%d 字节，upload=%s，storage=%s）", filename, size, upload_id, storage)
+        return {"id": upload_id, "name": filename, "size": size}
+
+    def create_submission(
+        self,
+        activity_id: str,
+        comment: str,
+        upload_ids: list[str],
+        draft: bool = False,
+        draft_id: str = "",
+    ) -> dict[str, Any]:
+        """创建提交（draft=True 就是存草稿）。已有草稿时走 PUT 复用那一条。"""
+        payload: dict[str, Any] = {
+            "comment": comment,
+            "uploads": upload_ids,
+            "slides": [],
+            "is_draft": bool(draft),
+            "mode": "normal",
+            "other_resources": [],
+            "uploads_in_rich_text": [],
+        }
+        method = "POST"
+        if draft_id:
+            method = "PUT"
+            payload["submission_id"] = draft_id
+        url = SUBMISSION_CREATE_URL.format(activity_id=activity_id)
+        with self.lock:
+            data = self._api_json(method, url, payload, timeout=180)
+        submission = None
+        if isinstance(data, dict):
+            submission = data.get("submission") if isinstance(data.get("submission"), dict) else None
+            if submission is None and data.get("id"):
+                submission = data
+        LOG.info(
+            "提交作业 %s：%s，附件 %d 个，草稿=%s",
+            activity_id,
+            "成功" if submission else "返回内容为空",
+            len(upload_ids),
+            draft,
+        )
+        return submission or {}
+
+    def retract_submission(self, submission_id: str) -> Any:
+        url = SUBMISSION_RETRACT_URL.format(submission_id=submission_id)
+        with self.lock:
+            return self._api_json("PUT", url, {}, timeout=60)
 
     def get_activity_detail(self, activity_id: str) -> dict[str, Any]:
         with self.lock:
@@ -1875,6 +2225,8 @@ class AppContext:
             "descriptionHtml": body_html,
             "descriptionText": description_text(body_html),
             "attachments": normalize_attachments(raw.get("uploads")),
+            "allowRetract": bool(data.get("allow_retract") or raw.get("allow_retract")),
+            "homeworkType": str(data.get("homework_type") or ""),
             "fetchedAt": now_iso(),
         }
         with self._detail_lock:
@@ -1932,6 +2284,114 @@ class AppContext:
             "saved": saved,
             "failed": failed,
             "folder": str(desktop_dir()),
+        }
+
+    # ------------------------------------------------------------------ 交作业（1.5.0）
+    def submission_state(self, activity_id: str) -> dict[str, Any]:
+        return self.auth.submission_state(str(activity_id))
+
+    def submit_homework(
+        self,
+        activity_id: str,
+        comment: str,
+        files: list[FormFile],
+        draft: bool = False,
+        zip_enabled: bool = False,
+        zip_name: str = "",
+    ) -> dict[str, Any]:
+        """把选中的文件（或打好的 ZIP）提交到深大优课。
+
+        draft=True 只存草稿，老师那边看不到；zip_enabled=True 时先把所有文件
+        打成一个压缩包再传，用来绕开平台对部分后缀的拦截，也方便交整个文件夹。
+        """
+        key = str(activity_id)
+        files = [item for item in files if item.filename]
+        comment = str(comment or "").strip()
+        if not files and not comment:
+            raise UpstreamError("还没有选择文件。")
+        if len(files) > MAX_SUBMIT_FILES:
+            raise UpstreamError(f"一次最多提交 {MAX_SUBMIT_FILES} 个文件，可以勾选打包成 ZIP。")
+        total = sum(len(item.data) for item in files)
+        if total > MAX_SUBMIT_BYTES:
+            raise UpstreamError(
+                f"文件总大小 {total // (1024 * 1024)} MB，超过 "
+                f"{MAX_SUBMIT_BYTES // (1024 * 1024)} MB 上限。"
+            )
+
+        comment = str(comment or "").strip()
+        title = ""
+        try:
+            title = str(self.homework_detail(key).get("title") or "")
+        except Exception:  # noqa: BLE001 - 拿不到标题不影响提交，只是默认包名差一点
+            title = ""
+
+        uploads: list[dict[str, Any]] = []
+        for item in files:
+            relative = item.filename.replace("\\", "/")
+            base = safe_filename(relative.split("/")[-1], "作业附件")
+            uploads.append({"relative": relative, "base": base, "data": item.data,
+                            "contentType": item.content_type, "origin": item})
+
+        targets: list[tuple[str, bytes, str]]
+        if zip_enabled and uploads:
+            archive_name = zip_display_name(zip_name, title or "作业附件")
+            note = f"{title}\n" if title else ""
+            if comment:
+                note += f"\n{comment}\n"
+            archive = build_zip_archive([(item["relative"], item["data"]) for item in uploads], note)
+            targets = [(archive_name, archive, "application/zip")]
+        else:
+            targets = [(item["base"], item["data"], item["contentType"]) for item in uploads]
+
+        state = self.auth.submission_state(key)
+        draft_id = ""
+        if isinstance(state.get("draft"), dict):
+            draft_id = str(state["draft"].get("id") or "")
+
+        upload_ids: list[str] = []
+        try:
+            for name, data, content_type in targets:
+                result = self.auth.upload_submission_file(key, name, data, content_type)
+                upload_ids.append(str(result["id"]))
+            raw = self.auth.create_submission(key, comment, upload_ids, draft=draft, draft_id=draft_id)
+        except UpstreamError as exc:
+            raise UpstreamError(exc.message) from exc
+
+        with self._detail_lock:
+            self._detail_cache.pop(key, None)
+        LOG.info(
+            "作业 %s 已%s，文件 %d 个（%s）",
+            key,
+            "存为草稿" if draft else "提交",
+            len(upload_ids),
+            ", ".join(name for name, _, _ in targets),
+        )
+        normalized = normalize_submission_payload(raw)
+        return {
+            "ok": True,
+            "draft": bool(draft),
+            "submission": normalized,
+            "uploaded": [{"name": name, "size": len(data)} for name, data, _ in targets],
+            "state": self.auth.submission_state(key),
+            "message": (
+                f"已存为草稿（{len(upload_ids)} 个文件），老师那边还看不到。"
+                if draft
+                else f"已提交 {len(upload_ids)} 个文件到深大优课。"
+            ),
+        }
+
+    def retract_submission(self, activity_id: str, submission_id: str) -> dict[str, Any]:
+        key, sid = str(activity_id), str(submission_id)
+        if not sid:
+            raise UpstreamError("没有可撤回的提交。")
+        self.auth.retract_submission(sid)
+        with self._detail_lock:
+            self._detail_cache.pop(key, None)
+        LOG.info("作业 %s 已撤回提交 %s", key, sid)
+        return {
+            "ok": True,
+            "state": self.auth.submission_state(key),
+            "message": "已撤回这次提交，可以重新交一份。",
         }
 
     # ------------------------------------------------------------------ 主题
@@ -2298,6 +2758,23 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"code": "SERVER_ERROR", "message": f"读取作业内容失败：{exc}"})
             return
 
+        submission_match = re.fullmatch(r"/api/homework/([0-9A-Za-z_-]{1,64})/submission", path)
+        if submission_match:
+            try:
+                state = self.context.submission_state(submission_match.group(1))
+                self._send_json(200, state)
+            except AuthRequired as exc:
+                self._send_json(401, {"code": "AUTH_REQUIRED", "message": exc.message})
+            except UpstreamError as exc:
+                self._send_json(502, {"code": "UPSTREAM_ERROR", "message": exc.message})
+            except requests.RequestException as exc:
+                LOG.warning("读取提交状态失败：%s", exc)
+                self._send_json(502, {"code": "UPSTREAM_ERROR", "message": "无法连接深大优课，请检查网络后重试。"})
+            except Exception as exc:
+                LOG.exception("读取提交状态失败")
+                self._send_json(500, {"code": "SERVER_ERROR", "message": f"读取提交状态失败：{exc}"})
+            return
+
         if path == "/api/themes":
             self._send_json(200, self.context.themes_payload())
             return
@@ -2469,6 +2946,96 @@ class ApiHandler(BaseHTTPRequestHandler):
                 200,
                 {"ok": True, "message": "已删除该主题。", **self.context.themes_payload()},
             )
+            return
+
+        match = re.fullmatch(r"/api/homework/([0-9A-Za-z_-]{1,64})/submit", path)
+        if match:
+            activity_id = match.group(1)
+            content_type = self.headers.get("Content-Type", "")
+            if "multipart/form-data" not in content_type.lower():
+                self._discard_body()
+                self._send_json(
+                    400, {"code": "BAD_REQUEST", "message": "提交请求必须是 multipart/form-data。"}
+                )
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = 0
+            if length <= 0:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": "提交请求是空的。"})
+                return
+            if length > MAX_SUBMIT_BYTES + 8 * 1024 * 1024:
+                self._discard_body()
+                self._send_json(
+                    413,
+                    {
+                        "code": "TOO_LARGE",
+                        "message": f"文件总大小超过 {MAX_SUBMIT_BYTES // (1024 * 1024)} MB 上限。",
+                    },
+                )
+                return
+            try:
+                body = self.rfile.read(length)
+                fields, files = parse_multipart(body, content_type)
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+            except Exception as exc:
+                LOG.exception("解析提交请求失败")
+                self._send_json(400, {"code": "BAD_REQUEST", "message": f"解析提交请求失败：{exc}"})
+                return
+
+            draft = str(fields.get("draft") or "0").strip() in {"1", "true", "yes", "on"}
+            zip_enabled = str(fields.get("zip") or "0").strip() in {"1", "true", "yes", "on"}
+            zip_name = str(fields.get("zipName") or "")
+            comment = str(fields.get("comment") or "")
+            try:
+                result = self.context.submit_homework(
+                    activity_id,
+                    comment=comment,
+                    files=files,
+                    draft=draft,
+                    zip_enabled=zip_enabled,
+                    zip_name=zip_name,
+                )
+                self._send_json(200, result)
+            except AuthRequired as exc:
+                self._send_json(401, {"code": "AUTH_REQUIRED", "message": exc.message})
+            except UpstreamError as exc:
+                self._send_json(502, {"code": "SUBMIT_FAILED", "message": exc.message})
+            except requests.RequestException as exc:
+                LOG.warning("提交时连接失败：%s", exc)
+                self._send_json(
+                    502,
+                    {"code": "UPSTREAM_ERROR", "message": "上传过程中连接中断，请检查网络后重试。"},
+                )
+            except Exception as exc:
+                LOG.exception("提交作业失败")
+                self._send_json(500, {"code": "SERVER_ERROR", "message": f"提交失败：{exc}"})
+            return
+
+        match = re.fullmatch(r"/api/homework/([0-9A-Za-z_-]{1,64})/retract", path)
+        if match:
+            try:
+                data = self._read_json_body()
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+            submission_id = str(data.get("submissionId") or "").strip()
+            try:
+                result = self.context.retract_submission(match.group(1), submission_id)
+                self._send_json(200, result)
+            except AuthRequired as exc:
+                self._send_json(401, {"code": "AUTH_REQUIRED", "message": exc.message})
+            except UpstreamError as exc:
+                self._send_json(502, {"code": "RETRACT_FAILED", "message": exc.message})
+            except requests.RequestException as exc:
+                LOG.warning("撤回提交失败：%s", exc)
+                self._send_json(502, {"code": "UPSTREAM_ERROR", "message": "无法连接深大优课，请检查网络后重试。"})
+            except Exception as exc:
+                LOG.exception("撤回提交失败")
+                self._send_json(500, {"code": "SERVER_ERROR", "message": f"撤回失败：{exc}"})
             return
 
         match = re.fullmatch(r"/api/homework/(.+)/complete", path)

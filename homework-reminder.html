@@ -1788,6 +1788,297 @@
       font-weight: 660;
     }
 
+    /* 提交作业（1.5.0） */
+    .submit-box {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      margin-top: 10px;
+      padding-top: 9px;
+      border-top: 1px dashed var(--line);
+    }
+
+    .submit-box__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .submit-box__title {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.02em;
+    }
+
+    .submit-badge {
+      padding: 1px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--muted-strong);
+      font-size: 10.5px;
+      font-weight: 700;
+    }
+
+    .submit-badge[data-tone="done"] {
+      border-color: var(--green-line);
+      background: var(--green-soft);
+      color: var(--accent-ink);
+    }
+
+    .submit-badge[data-tone="draft"] {
+      border-color: var(--orange-line);
+      background: var(--orange-soft);
+      color: var(--warn-ink);
+    }
+
+    .submit-done {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      color: var(--muted-strong);
+      font-size: 11.5px;
+      line-height: 1.6;
+    }
+
+    .submit-done__row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .submit-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .submit-file {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 8px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 11.5px;
+    }
+
+    .submit-file .icon {
+      flex: none;
+      width: 12px;
+      height: 12px;
+      color: var(--muted);
+    }
+
+    .submit-file__name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .submit-file__size {
+      flex: none;
+      color: var(--muted-weak);
+      font-size: 10.5px;
+    }
+
+    .submit-file__del {
+      flex: none;
+      padding: 0 2px;
+      border: 0;
+      background: none;
+      color: var(--red);
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .submit-pick {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .submit-zip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted-strong);
+      font-size: 11.5px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .submit-zip input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      accent-color: var(--green);
+      cursor: pointer;
+    }
+
+    .submit-input,
+    .submit-comment {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family: inherit;
+      font-size: 11.5px;
+    }
+
+    .submit-input:focus,
+    .submit-comment:focus {
+      outline: 2px solid var(--green-line);
+      outline-offset: 1px;
+      border-color: var(--green-line);
+    }
+
+    .submit-comment {
+      min-height: 54px;
+      line-height: 1.65;
+      resize: vertical;
+    }
+
+    .submit-input[disabled],
+    .submit-comment[disabled] {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .submit-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .submit-primary {
+      padding: 4px 13px;
+      border: 1px solid var(--green-dark);
+      border-radius: 999px;
+      background: var(--green);
+      color: var(--on-accent);
+      font-family: inherit;
+      font-size: 11.5px;
+      font-weight: 680;
+      line-height: 1.7;
+      cursor: pointer;
+      transition: background 150ms ease;
+    }
+
+    .submit-primary:hover {
+      background: var(--green-dark);
+    }
+
+    .submit-primary[disabled] {
+      opacity: 0.55;
+      cursor: progress;
+    }
+
+    .submit-hint {
+      color: var(--muted-weak);
+      font-size: 10.5px;
+      line-height: 1.6;
+    }
+
+    .submit-error {
+      color: var(--danger-ink);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    /* 提交确认弹窗 */
+    .submit-dialog {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      max-width: none;
+      max-height: none;
+    }
+
+    .submit-dialog::backdrop {
+      background: rgba(18, 24, 20, 0.44);
+    }
+
+    .submit-dialog__card {
+      width: min(420px, calc(100vw - 56px));
+      padding: 18px 20px 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: 0 30px 70px -40px rgba(var(--shadow-rgb), 0.7);
+      font-family: var(--font-sans);
+    }
+
+    .submit-dialog__title {
+      margin: 0 0 4px;
+      font-size: 15px;
+      font-weight: 720;
+    }
+
+    .submit-dialog__sub {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 11.5px;
+      line-height: 1.65;
+    }
+
+    .submit-dialog__list {
+      margin: 0 0 12px;
+      padding: 9px 11px;
+      border: 1px solid var(--line-soft);
+      border-radius: 10px;
+      background: var(--surface-soft);
+      font-size: 11.5px;
+      line-height: 1.9;
+    }
+
+    .submit-dialog__list b {
+      font-weight: 680;
+    }
+
+    .submit-dialog__warn {
+      margin: 0 0 14px;
+      padding: 8px 10px;
+      border: 1px solid var(--red-line);
+      border-radius: 9px;
+      background: var(--red-soft);
+      color: var(--danger-ink);
+      font-size: 11px;
+      line-height: 1.7;
+    }
+
+    .submit-dialog__actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .submit-dialog__actions .mini-btn {
+      border-color: var(--line-strong);
+      background: var(--surface);
+      color: var(--muted-strong);
+      font-size: 11.5px;
+    }
+
+    .submit-dialog__actions .mini-btn:hover {
+      background: var(--surface-tint);
+    }
+
     .task-meta {
       display: flex;
       align-items: center;
@@ -3795,6 +4086,21 @@
     </div>
   </dialog>
 
+  <dialog class="submit-dialog" id="submitDialog" aria-labelledby="submitDialogTitle" aria-describedby="submitDialogSub">
+    <div class="submit-dialog__card">
+      <h3 class="submit-dialog__title" id="submitDialogTitle">确认提交这份作业？</h3>
+      <p class="submit-dialog__sub" id="submitDialogSub">提交后老师那边立刻能看到。</p>
+      <div class="submit-dialog__list" id="submitDialogList"></div>
+      <p class="submit-dialog__warn" id="submitDialogWarn" hidden>
+        交上去以后本应用不能当没交过，只能撤回；撤回会留下记录。
+      </p>
+      <div class="submit-dialog__actions">
+        <button class="mini-btn" type="button" id="submitDialogCancel">再检查一下</button>
+        <button class="submit-primary" type="button" id="submitDialogOk">确定提交</button>
+      </div>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite">
     <span class="toast-icon" aria-hidden="true"><svg class="icon"><use href="#i-check"></use></svg></span>
     <span id="toastMessage"></span>
@@ -3960,6 +4266,9 @@
         lastUpdated: null,
         details: new Map(),
         openDetails: new Set(),
+        // 交作业（1.5.0）：每条作业的选择与提交状态，刷新重绘也不丢
+        submit: new Map(),
+        submitDialog: null,
         prefetching: false,
         loginPending: false,
         toastTimer: null,
@@ -4708,7 +5017,8 @@
         const body = detail.descriptionHtml
           ? `<div class="detail-text">${detail.descriptionHtml}</div>`
           : '<p class="detail-empty">这条作业没有文字说明，看看附件里有没有要求。</p>';
-        if (!attachments.length) return body;
+        const submitBlock = renderSubmitBlock(detail);
+        if (!attachments.length) return `${body}${submitBlock}`;
 
         const rows = attachments
           .map(
@@ -4737,6 +5047,7 @@
             </div>
             ${rows}
           </div>
+          ${submitBlock}
         `;
       }
 
@@ -4907,6 +5218,420 @@
           delete button.dataset.busy;
           button.disabled = false;
           button.textContent = idleText;
+        }
+      }
+
+      /* ==========================================================
+         提交作业（1.5.0）
+         功能与网页端一致：选文件、写说明、存草稿、提交、撤回；
+         额外提供「打包成 ZIP」（可命名），用来交整个文件夹或绕开后缀拦截。
+         ========================================================== */
+      const SUBMIT_MAX_FILES = 40;
+      const SUBMIT_MAX_BYTES = 300 * 1024 * 1024;
+
+      function submitEntry(taskId) {
+        const key = String(taskId);
+        let entry = state.submit.get(key);
+        if (!entry) {
+          entry = {
+            files: [],
+            zip: false,
+            zipName: '',
+            comment: '',
+            status: null,
+            loaded: false,
+            loading: false,
+            busy: false,
+            progress: 0,
+            error: ''
+          };
+          state.submit.set(key, entry);
+        }
+        return entry;
+      }
+
+      function fileKey(file) {
+        return `${file.webkitRelativePath || file.name}|${file.size}|${file.lastModified}`;
+      }
+
+      function submitTotalBytes(entry) {
+        return entry.files.reduce((sum, file) => sum + (Number(file.size) || 0), 0);
+      }
+
+      function renderSubmitBadge(entry) {
+        const status = entry.status || {};
+        if (status.submitted) return '<span class="submit-badge" data-tone="done">已提交</span>';
+        if (status.draft) return '<span class="submit-badge" data-tone="draft">草稿</span>';
+        return '<span class="submit-badge">未提交</span>';
+      }
+
+      function renderSubmitRecord(label, record, detail, showRetract) {
+        if (!record) return '';
+        const when = record.submittedAt || record.createdAt;
+        const timeText = when ? formatFullDate(new Date(when)) : '';
+        const uploads = Array.isArray(record.uploads) ? record.uploads : [];
+        const canRetract = showRetract && detail.allowRetract !== false;
+        const rows = uploads
+          .map(
+            (item) => `
+              <li class="submit-file">
+                <svg class="icon" aria-hidden="true"><use href="#i-paperclip"></use></svg>
+                <span class="submit-file__name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>
+                <span class="submit-file__size">${formatBytes(item.size)}</span>
+              </li>
+            `
+          )
+          .join('');
+        const comment = record.comment
+          ? `<div class="submit-done__row"><span>说明：${escapeHtml(record.comment)}</span></div>`
+          : '';
+        return `
+          <div class="submit-done">
+            <div class="submit-done__row">
+              <span>${escapeHtml(label)}${timeText ? ` · ${escapeHtml(timeText)}` : ''}</span>
+              ${uploads.length ? `<span class="submit-hint">${uploads.length} 个文件</span>` : ''}
+              ${
+                canRetract
+                  ? `<button class="mini-btn" type="button" data-retract="${escapeHtml(record.id)}">撤回</button>`
+                  : ''
+              }
+            </div>
+            ${comment}
+            ${rows ? `<ul class="submit-list">${rows}</ul>` : ''}
+          </div>
+        `;
+      }
+
+      function renderSubmitInner(detail, entry) {
+        const taskId = String(detail.id);
+        const busy = entry.busy;
+        const total = submitTotalBytes(entry);
+        const filesHtml = entry.files.length
+          ? `<ul class="submit-list">${entry.files
+              .map(
+                (file, index) => `
+                  <li class="submit-file">
+                    <svg class="icon" aria-hidden="true"><use href="#i-paperclip"></use></svg>
+                    <span class="submit-file__name" title="${escapeHtml(
+                      file.webkitRelativePath || file.name
+                    )}">${escapeHtml(file.webkitRelativePath || file.name)}</span>
+                    <span class="submit-file__size">${formatBytes(file.size)}</span>
+                    <button
+                      class="submit-file__del"
+                      type="button"
+                      data-remove-file="${index}"
+                      aria-label="移除 ${escapeHtml(file.name)}"
+                      ${busy ? 'disabled' : ''}
+                    >×</button>
+                  </li>
+                `
+              )
+              .join('')}</ul>`
+          : '';
+
+        const status = entry.status || {};
+        const submittedRecord = status.submitted
+          ? renderSubmitRecord('已提交', status.submitted, detail, true)
+          : '';
+        const draftRecord = !status.submitted && status.draft
+          ? renderSubmitRecord('草稿', status.draft, detail, false)
+          : '';
+
+        const hint = busy
+          ? `正在上传${entry.progress > 0 ? ` ${Math.round(entry.progress * 100)}%` : '…'}`
+          : entry.files.length
+            ? entry.zip
+              ? `将打包成 1 个 ZIP（原文件 ${entry.files.length} 个，共 ${formatBytes(total)}）`
+              : `共 ${entry.files.length} 个文件，${formatBytes(total)}`
+            : status.submitted
+              ? '已提交过。要改就重新选文件，再点「再次提交」。'
+              : '文件、压缩包、说明至少要有一样才能提交。';
+
+        const defaultZipName = detail.title ? `${detail.title}` : '作业附件';
+
+        return `
+          <div class="submit-box__head">
+            <span class="submit-box__title">提交作业</span>
+            ${renderSubmitBadge(entry)}
+          </div>
+          ${submittedRecord}
+          ${draftRecord}
+          ${entry.loading ? '<p class="submit-hint">正在读取提交状态…</p>' : ''}
+          ${entry.error ? `<p class="submit-error">${escapeHtml(entry.error)}</p>` : ''}
+          <div class="submit-pick">
+            <button class="mini-btn" type="button" data-pick-files ${busy ? 'disabled' : ''}>选择文件</button>
+            <button class="mini-btn" type="button" data-pick-folder ${busy ? 'disabled' : ''}>选择文件夹</button>
+            <input type="file" multiple hidden data-file-input="files">
+            <input type="file" webkitdirectory directory multiple hidden data-file-input="folder">
+          </div>
+          ${filesHtml}
+          <label class="submit-zip">
+            <input type="checkbox" data-zip-toggle ${entry.zip ? 'checked' : ''} ${busy ? 'disabled' : ''}>
+            <span>打包成 ZIP 再提交</span>
+          </label>
+          <input
+            class="submit-input"
+            type="text"
+            data-zip-name
+            value="${escapeHtml(entry.zipName)}"
+            placeholder="压缩包名称（默认：${escapeHtml(defaultZipName)}）"
+            maxlength="60"
+            ${entry.zip ? '' : 'disabled'}
+            ${busy ? 'disabled' : ''}
+          >
+          <textarea
+            class="submit-comment"
+            data-submit-comment
+            rows="2"
+            placeholder="给老师的说明（选填）"
+            ${busy ? 'disabled' : ''}
+          >${escapeHtml(entry.comment)}</textarea>
+          <div class="submit-actions">
+            <button class="mini-btn" type="button" data-submit-draft ${busy ? 'disabled' : ''}>存草稿</button>
+            <button class="submit-primary" type="button" data-submit-final ${busy ? 'disabled' : ''}>${
+              status.submitted ? '再次提交' : '提交作业'
+            }</button>
+          </div>
+          <p class="submit-hint" data-submit-hint>${escapeHtml(hint)}</p>
+        `;
+      }
+
+      function renderSubmitBlock(detail) {
+        const entry = submitEntry(detail.id);
+        if (!entry.loaded && !entry.loading) {
+          entry.loading = true;
+          queueMicrotask(() => loadSubmissionState(detail.id));
+        }
+        return `<div class="submit-box" data-submit-box="${escapeHtml(detail.id)}">${renderSubmitInner(
+          detail,
+          entry
+        )}</div>`;
+      }
+
+      function refreshSubmitBlock(taskId) {
+        const detail = state.details.get(String(taskId));
+        const box = document.querySelector(
+          `.submit-box[data-submit-box="${CSS.escape(String(taskId))}"]`
+        );
+        if (!detail || !box) return;
+        box.innerHTML = renderSubmitInner(detail, submitEntry(taskId));
+      }
+
+      async function loadSubmissionState(taskId) {
+        const entry = submitEntry(taskId);
+        entry.loading = true;
+        entry.error = '';
+        try {
+          entry.status = await requestJSON(
+            `/api/homework/${encodeURIComponent(taskId)}/submission`,
+            { timeout: 25000 }
+          );
+        } catch (error) {
+          entry.error = error.message || '读取提交状态失败。';
+        } finally {
+          entry.loading = false;
+          entry.loaded = true;
+          refreshSubmitBlock(taskId);
+        }
+      }
+
+      function addSubmitFiles(taskId, fileList) {
+        const entry = submitEntry(taskId);
+        const seen = new Set(entry.files.map(fileKey));
+        let skipped = 0;
+        Array.from(fileList || []).forEach((file) => {
+          const key = fileKey(file);
+          if (seen.has(key)) {
+            skipped += 1;
+            return;
+          }
+          seen.add(key);
+          entry.files.push(file);
+        });
+        if (entry.files.length > SUBMIT_MAX_FILES) {
+          entry.files = entry.files.slice(0, SUBMIT_MAX_FILES);
+          showToast(`一次最多 ${SUBMIT_MAX_FILES} 个文件，多的已经去掉`, 'error');
+        }
+        if (submitTotalBytes(entry) > SUBMIT_MAX_BYTES) {
+          entry.error = `选中的文件超过 ${SUBMIT_MAX_BYTES / (1024 * 1024)} MB，勾选「打包成 ZIP」可以压小一点。`;
+        } else {
+          entry.error = '';
+        }
+        if (skipped) showToast(`已跳过 ${skipped} 个重复文件`);
+        refreshSubmitBlock(taskId);
+      }
+
+      function uploadSubmission(taskId, formData, onProgress) {
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', `/api/homework/${encodeURIComponent(taskId)}/submit`);
+          xhr.setRequestHeader('Accept', 'application/json');
+          xhr.timeout = 900000;
+          xhr.upload.addEventListener('progress', (event) => {
+            if (event.lengthComputable && onProgress) onProgress(event.loaded / event.total);
+          });
+          xhr.addEventListener('load', () => {
+            let payload = {};
+            try {
+              payload = JSON.parse(xhr.responseText || '{}');
+            } catch {
+              payload = { message: (xhr.responseText || '').slice(0, 200) };
+            }
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve(payload);
+              return;
+            }
+            reject(
+              new ApiError(payload.message || `提交失败（HTTP ${xhr.status}）`, {
+                code: payload.code || `HTTP_${xhr.status}`,
+                status: xhr.status,
+                payload
+              })
+            );
+          });
+          xhr.addEventListener('error', () =>
+            reject(new ApiError('上传过程中连接中断，请检查网络后重试。', { code: 'NETWORK_ERROR' }))
+          );
+          xhr.addEventListener('timeout', () =>
+            reject(new ApiError('上传超时，文件可能太大，可以勾选打包成 ZIP 再试。', { code: 'TIMEOUT' }))
+          );
+          xhr.send(formData);
+        });
+      }
+
+      function openSubmitDialog(detail, entry, draft) {
+        const dialog = document.getElementById('submitDialog');
+        if (!dialog) return Promise.resolve(false);
+        const list = document.getElementById('submitDialogList');
+        const warn = document.getElementById('submitDialogWarn');
+        const title = document.getElementById('submitDialogTitle');
+        const sub = document.getElementById('submitDialogSub');
+        const okButton = document.getElementById('submitDialogOk');
+
+        const fileLines = entry.zip
+          ? `<div><b>压缩包</b>：${escapeHtml(entry.zipName || `${detail.title}.zip`)}（含 ${entry.files.length} 个文件）</div>`
+          : entry.files
+              .map((file) => `<div>· ${escapeHtml(file.webkitRelativePath || file.name)}</div>`)
+              .join('');
+        const commentLine = entry.comment
+          ? `<div><b>说明</b>：${escapeHtml(entry.comment)}</div>`
+          : '';
+
+        if (list) {
+          const again = !draft && entry.status && entry.status.submitted
+            ? '<div><b>注意</b>：这是一次新的提交，之前那份会变成历史版本</div>'
+            : '';
+          list.innerHTML = `
+            <div><b>作业</b>：${escapeHtml(detail.title || '')}</div>
+            ${fileLines || '<div><b>附件</b>：无（只交文字说明）</div>'}
+            ${commentLine}
+            ${again}
+          `;
+        }
+        if (warn) warn.hidden = draft;
+        if (title) title.textContent = draft ? '把这几个文件存成草稿？' : '确认提交这份作业？';
+        if (sub) {
+          sub.textContent = draft
+            ? '草稿只有你自己能看到，老师那边不会收到。'
+            : '提交后老师那边立刻能看到，本应用不能当没交过。';
+        }
+        if (okButton) okButton.textContent = draft ? '确定存草稿' : '确定提交';
+
+        state.submitDialog = { taskId: String(detail.id), draft };
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', '');
+        return new Promise((resolve) => {
+          state.submitDialog.resolve = resolve;
+        });
+      }
+
+      function closeSubmitDialog(confirmed) {
+        const dialog = document.getElementById('submitDialog');
+        if (dialog && dialog.open) dialog.close();
+        else if (dialog) dialog.removeAttribute('open');
+        const pending = state.submitDialog;
+        state.submitDialog = null;
+        if (pending && typeof pending.resolve === 'function') pending.resolve(Boolean(confirmed));
+      }
+
+      async function doSubmitHomework(taskId, draft) {
+        const detail = state.details.get(String(taskId));
+        if (!detail) return;
+        const entry = submitEntry(taskId);
+        if (entry.busy) return;
+        const comment = (entry.comment || '').trim();
+        if (!entry.files.length && !comment) {
+          showToast('先选文件，或者写一句说明', 'error');
+          return;
+        }
+        if (entry.files.length && submitTotalBytes(entry) > SUBMIT_MAX_BYTES) {
+          showToast(`文件总大小超过 ${SUBMIT_MAX_BYTES / (1024 * 1024)} MB`, 'error');
+          return;
+        }
+
+        const confirmed = await openSubmitDialog(detail, entry, draft);
+        if (!confirmed) return;
+
+        entry.busy = true;
+        entry.progress = 0;
+        entry.error = '';
+        refreshSubmitBlock(taskId);
+
+        const form = new FormData();
+        form.append('comment', comment);
+        form.append('draft', draft ? '1' : '0');
+        form.append('zip', entry.zip ? '1' : '0');
+        form.append('zipName', entry.zipName || '');
+        entry.files.forEach((file) => {
+          form.append('files', file, file.webkitRelativePath || file.name);
+        });
+
+        try {
+          const result = await uploadSubmission(taskId, form, (ratio) => {
+            entry.progress = ratio;
+            const hint = document.querySelector(
+              `.submit-box[data-submit-box="${CSS.escape(String(taskId))}"] [data-submit-hint]`
+            );
+            if (hint) hint.textContent = `正在上传 ${Math.round(ratio * 100)}%`;
+          });
+          entry.status = result.state || entry.status;
+          entry.files = [];
+          entry.comment = '';
+          entry.zipName = '';
+          showToast(result.message || (draft ? '已存为草稿' : '已提交作业'));
+        } catch (error) {
+          console.error('[作业备忘] 提交作业失败：', error);
+          entry.error = error.message || '提交失败，请稍后重试。';
+          if (['AUTH_REQUIRED', 'AUTH_FAILED'].includes(error.code)) {
+            showToast('登录已失效，重新登录后再交', 'error');
+            openAuthDialog();
+          } else {
+            showToast(entry.error, 'error');
+          }
+        } finally {
+          entry.busy = false;
+          entry.progress = 0;
+          refreshSubmitBlock(taskId);
+        }
+      }
+
+      async function retractSubmission(taskId, submissionId, button) {
+        if (!submissionId) return;
+        if (button) button.disabled = true;
+        try {
+          const result = await requestJSON(
+            `/api/homework/${encodeURIComponent(taskId)}/retract`,
+            { method: 'POST', body: JSON.stringify({ submissionId }), timeout: 60000 }
+          );
+          const entry = submitEntry(taskId);
+          entry.status = result.state || entry.status;
+          showToast(result.message || '已撤回');
+        } catch (error) {
+          console.error('[作业备忘] 撤回失败：', error);
+          showToast(error.message || '撤回失败，请稍后重试。', 'error');
+        } finally {
+          if (button) button.disabled = false;
+          refreshSubmitBlock(taskId);
         }
       }
 
@@ -5791,6 +6516,46 @@
         );
       });
 
+      els.taskList.addEventListener('change', (event) => {
+        const fileInput = event.target.closest('[data-file-input]');
+        if (fileInput) {
+          const box = fileInput.closest('.submit-box');
+          if (box && fileInput.files) addSubmitFiles(box.dataset.submitBox, fileInput.files);
+          fileInput.value = '';
+          return;
+        }
+        const zipToggle = event.target.closest('[data-zip-toggle]');
+        if (zipToggle) {
+          const box = zipToggle.closest('.submit-box');
+          if (box) {
+            const entry = submitEntry(box.dataset.submitBox);
+            entry.zip = zipToggle.checked;
+            refreshSubmitBlock(box.dataset.submitBox);
+          }
+        }
+      });
+
+      els.taskList.addEventListener('input', (event) => {
+        const field = event.target.closest('[data-submit-comment]') || event.target.closest('[data-zip-name]');
+        const box = field && field.closest('.submit-box');
+        if (!box) return;
+        const entry = submitEntry(box.dataset.submitBox);
+        if (field.hasAttribute('data-submit-comment')) entry.comment = field.value;
+        else entry.zipName = field.value;
+      });
+
+      const submitDialogEl = document.getElementById('submitDialog');
+      if (submitDialogEl) {
+        const okButton = document.getElementById('submitDialogOk');
+        const cancelButton = document.getElementById('submitDialogCancel');
+        if (okButton) okButton.addEventListener('click', () => closeSubmitDialog(true));
+        if (cancelButton) cancelButton.addEventListener('click', () => closeSubmitDialog(false));
+        submitDialogEl.addEventListener('cancel', (event) => {
+          event.preventDefault();
+          closeSubmitDialog(false);
+        });
+      }
+
       els.taskList.addEventListener('click', (event) => {
         const toggleButton = event.target.closest('[data-toggle-detail]');
         if (toggleButton) {
@@ -5812,6 +6577,56 @@
             attachmentButton.dataset.downloadAtt,
             attachmentButton
           );
+          return;
+        }
+
+        const pickFilesButton = event.target.closest('[data-pick-files]');
+        if (pickFilesButton) {
+          const box = pickFilesButton.closest('.submit-box');
+          const input = box && box.querySelector('[data-file-input="files"]');
+          if (input) input.click();
+          return;
+        }
+
+        const pickFolderButton = event.target.closest('[data-pick-folder]');
+        if (pickFolderButton) {
+          const box = pickFolderButton.closest('.submit-box');
+          const input = box && box.querySelector('[data-file-input="folder"]');
+          if (input) input.click();
+          return;
+        }
+
+        const removeFileButton = event.target.closest('[data-remove-file]');
+        if (removeFileButton) {
+          const box = removeFileButton.closest('.submit-box');
+          const taskId = box && box.dataset.submitBox;
+          const entry = taskId ? submitEntry(taskId) : null;
+          if (entry) {
+            entry.files.splice(Number(removeFileButton.dataset.removeFile) || 0, 1);
+            entry.error = '';
+            refreshSubmitBlock(taskId);
+          }
+          return;
+        }
+
+        const finalButton = event.target.closest('[data-submit-final]');
+        if (finalButton) {
+          const box = finalButton.closest('.submit-box');
+          if (box) doSubmitHomework(box.dataset.submitBox, false);
+          return;
+        }
+
+        const draftButton = event.target.closest('[data-submit-draft]');
+        if (draftButton) {
+          const box = draftButton.closest('.submit-box');
+          if (box) doSubmitHomework(box.dataset.submitBox, true);
+          return;
+        }
+
+        const retractButton = event.target.closest('[data-retract]');
+        if (retractButton) {
+          const box = retractButton.closest('.submit-box');
+          if (box) retractSubmission(box.dataset.submitBox, retractButton.dataset.retract, retractButton);
           return;
         }
 
