@@ -1253,12 +1253,19 @@
 
     .done-item {
       display: flex;
-      align-items: center;
-      gap: 10px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
       padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 12px;
       background: var(--surface);
+    }
+
+    .done-item__row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .done-item__main {
@@ -1304,6 +1311,59 @@
     .done-item__btn[disabled] {
       opacity: 0.55;
       cursor: default;
+    }
+
+    .done-item__btn--ghost {
+      border-color: var(--line-strong);
+      color: var(--muted-strong);
+      background: var(--surface);
+    }
+
+    .done-item__btn--ghost:hover {
+      background: var(--surface-soft);
+    }
+
+    .done-sub {
+      margin-top: 10px;
+      padding-top: 9px;
+      border-top: 1px dashed var(--line);
+    }
+
+    .done-sub__row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px 8px;
+    }
+
+    .done-sub__time {
+      color: var(--muted);
+      font-size: 10.5px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .done-sub__comment {
+      margin: 7px 0 0;
+      color: var(--muted-strong);
+      font-size: 11.5px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .done-sub__hint {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .done-sub__hint[data-tone="error"] {
+      color: var(--danger-ink);
+    }
+
+    .done-sub .submit-list {
+      margin-top: 7px;
     }
 
     .done-empty {
@@ -4256,6 +4316,20 @@
     </div>
   </dialog>
 
+  <dialog class="submit-dialog" id="completeDialog" aria-labelledby="completeDialogTitle" aria-describedby="completeDialogSub">
+    <div class="submit-dialog__card">
+      <h3 class="submit-dialog__title" id="completeDialogTitle">标记为已完成？</h3>
+      <p class="submit-dialog__sub" id="completeDialogSub">
+        只会从本应用的待办里隐藏，LMS 上不会有任何变化，之后可以在「已完成」里恢复。
+      </p>
+      <div class="submit-dialog__list" id="completeDialogList"></div>
+      <div class="submit-dialog__actions">
+        <button class="mini-btn" type="button" id="completeDialogCancel">先不标记</button>
+        <button class="submit-primary" type="button" id="completeDialogOk">确定完成</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog class="theme-dialog done-dialog" id="doneDialog" aria-labelledby="doneTitle">
     <div class="theme-panel done-panel">
       <button class="auth-close" id="doneClose" type="button" aria-label="关闭已完成列表">
@@ -4271,7 +4345,8 @@
       </header>
 
       <p class="auth-desc">
-        这里只是本机的「我不想再看到它」清单，LMS 上什么都没变。误点了就在下面点「恢复」，它会回到待办列表。
+        这里只是本机的「我不想再看到它」清单，LMS 上什么都没变。误点了点「恢复」就会回到待办；
+        点「提交记录」能看这条作业在平台上交过什么（说明、文件、时间）。
       </p>
 
       <div class="done-toolbar">
@@ -4470,6 +4545,10 @@
         // 交作业（1.5.0）：每条作业的选择与提交状态，刷新重绘也不丢
         submit: new Map(),
         submitDialog: null,
+        // 已完成（1.5.2）：确认弹窗、每条作业的提交记录缓存与展开状态
+        completeDialog: null,
+        doneSubmissions: new Map(),
+        doneExpanded: new Set(),
         prefetching: false,
         loginPending: false,
         toastTimer: null,
@@ -5764,6 +5843,38 @@
         if (pending && typeof pending.resolve === 'function') pending.resolve(Boolean(confirmed));
       }
 
+      /* ---- 标记完成前的确认（1.5.2）------------------------------ */
+      function askCompleteConfirm(item) {
+        const dialog = document.getElementById('completeDialog');
+        if (!dialog) return Promise.resolve(true);
+        const list = document.getElementById('completeDialogList');
+        const name = item.name || '（没有标题）';
+        if (list) {
+          const course = item.course
+            ? `<div><b>课程</b>：${escapeHtml(item.course)}</div>`
+            : '';
+          const due = item.dueDate
+            ? `<div><b>截止</b>：${escapeHtml(formatDueDate(new Date(item.dueDate)))}</div>`
+            : '';
+          list.innerHTML = `<div><b>作业</b>：${escapeHtml(name)}</div>${course}${due}`;
+        }
+        state.completeDialog = { id: String(item.id) };
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', '');
+        return new Promise((resolve) => {
+          state.completeDialog.resolve = resolve;
+        });
+      }
+
+      function closeCompleteDialog(confirmed) {
+        const dialog = document.getElementById('completeDialog');
+        if (dialog && dialog.open) dialog.close();
+        else if (dialog) dialog.removeAttribute('open');
+        const pending = state.completeDialog;
+        state.completeDialog = null;
+        if (pending && typeof pending.resolve === 'function') pending.resolve(Boolean(confirmed));
+      }
+
       async function doSubmitHomework(taskId, draft) {
         const detail = state.details.get(String(taskId));
         if (!detail) return;
@@ -6381,6 +6492,10 @@
         const item = state.assignments.find((entry) => entry.id === id);
         if (!item) return;
 
+        const confirmed = await askCompleteConfirm(item);
+        if (!confirmed) return;
+        if (state.pendingCompletions.has(id)) return;
+
         state.pendingCompletions.add(id);
         button.disabled = true;
         button.classList.add('is-saving');
@@ -6394,6 +6509,8 @@
             { id, title: item.name, course: item.course || '', completedAt: new Date().toISOString() },
             ...state.completedRecords.filter((row) => row.id !== id)
           ];
+          state.doneSubmissions.delete(id);
+          state.doneExpanded.delete(id);
           updateCompletedBadge();
 
           const card = button.closest('.task');
@@ -6503,22 +6620,147 @@
         els.doneList.innerHTML = rows
           .map((row) => {
             const busy = state.restoringIds.has(row.id);
+            const expanded = state.doneExpanded.has(row.id);
+            const title = row.title || '（没有标题）';
             return `
               <div class="done-item" role="listitem" data-done-id="${escapeHtml(row.id)}">
-                <div class="done-item__main">
-                  <p class="done-item__title" title="${escapeHtml(row.title || '（没有标题）')}">${escapeHtml(row.title || '（没有标题）')}</p>
-                  <p class="done-item__meta">${escapeHtml(row.course ? `${row.course} · ` : '')}${escapeHtml(formatCompletedAt(row.completedAt))}</p>
+                <div class="done-item__row">
+                  <div class="done-item__main">
+                    <p class="done-item__title" title="${escapeHtml(title)}">${escapeHtml(title)}</p>
+                    <p class="done-item__meta">${escapeHtml(row.course ? `${row.course} · ` : '')}${escapeHtml(formatCompletedAt(row.completedAt))}</p>
+                  </div>
+                  <button
+                    class="done-item__btn done-item__btn--ghost"
+                    type="button"
+                    data-submission-id="${escapeHtml(row.id)}"
+                    aria-expanded="${expanded ? 'true' : 'false'}"
+                    aria-label="${expanded ? '收起' : '查看'}「${escapeHtml(title)}」的提交记录"
+                  >${expanded ? '收起' : '提交记录'}</button>
+                  <button
+                    class="done-item__btn"
+                    type="button"
+                    data-restore-id="${escapeHtml(row.id)}"
+                    ${busy ? 'disabled' : ''}
+                    aria-label="恢复「${escapeHtml(title)}」到待办"
+                  >${busy ? '恢复中…' : '恢复'}</button>
                 </div>
-                <button
-                  class="done-item__btn"
-                  type="button"
-                  data-restore-id="${escapeHtml(row.id)}"
-                  ${busy ? 'disabled' : ''}
-                  aria-label="恢复「${escapeHtml(row.title || '这条作业')}」到待办"
-                >${busy ? '恢复中…' : '恢复'}</button>
+                ${expanded ? renderDoneSubmission(row) : ''}
               </div>`;
           })
           .join('');
+      }
+
+      function doneSubmissionEntry(id) {
+        if (!state.doneSubmissions.has(id)) {
+          state.doneSubmissions.set(id, { loading: false, error: '', state: null });
+        }
+        return state.doneSubmissions.get(id);
+      }
+
+      async function fetchSubmissionState(id) {
+        if (IS_MOCK) {
+          await wait(180);
+          return {
+            studentId: 'demo',
+            submitted: {
+              id: `demo-${id}`,
+              isDraft: false,
+              comment: '实验报告和抓包文件都在附件里，第三题补了截图。',
+              submittedAt: new Date(Date.now() - 2 * HOUR).toISOString(),
+              createdAt: '',
+              uploads: [
+                { id: 'demo-1', name: '实验报告.pdf', size: 812345 },
+                { id: 'demo-2', name: '抓包结果.pcapng', size: 241152 }
+              ]
+            },
+            draft: null,
+            canRetract: true
+          };
+        }
+        return requestJSON(`/api/homework/${encodeURIComponent(id)}/submission`, { method: 'GET' });
+      }
+
+      function renderDoneSubmission(row) {
+        const entry = doneSubmissionEntry(row.id);
+        if (entry.loading) {
+          return '<div class="done-sub"><p class="done-sub__hint">正在读取平台的提交记录…</p></div>';
+        }
+        if (entry.error) {
+          return `<div class="done-sub"><p class="done-sub__hint" data-tone="error">${escapeHtml(entry.error)}</p></div>`;
+        }
+        const payload = entry.state;
+        const submitted = payload && payload.submitted ? payload.submitted : null;
+        const draft = payload && payload.draft ? payload.draft : null;
+        if (!submitted && !draft) {
+          return '<div class="done-sub"><p class="done-sub__hint">平台上没有查到提交记录：可能确实没交，也可能这条作业已经被老师关闭。</p></div>';
+        }
+
+        const record = submitted || draft;
+        const badge = submitted
+          ? '<span class="submit-badge" data-tone="done">已提交</span>'
+          : '<span class="submit-badge" data-tone="draft">草稿（未交）</span>';
+        const when = record.submittedAt || record.createdAt;
+        const whenDate = when ? new Date(when) : null;
+        const timeText =
+          whenDate && !Number.isNaN(whenDate.getTime()) ? formatFullDate(whenDate) : '时间未知';
+        const uploads = Array.isArray(record.uploads) ? record.uploads : [];
+        const files = uploads.length
+          ? `<ul class="submit-list">${uploads
+              .map(
+                (item) => `
+                  <li class="submit-file">
+                    <svg class="icon" aria-hidden="true"><use href="#i-paperclip"></use></svg>
+                    <span class="submit-file__name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>
+                    <span class="submit-file__size">${formatBytes(item.size)}</span>
+                  </li>`
+              )
+              .join('')}</ul>`
+          : '';
+        const comment = record.comment
+          ? `<p class="done-sub__comment">说明：${escapeHtml(record.comment)}</p>`
+          : '';
+        const draftHint =
+          submitted && draft
+            ? '<p class="done-sub__hint">另有一份草稿还没交，老师那边看不到。</p>'
+            : '';
+
+        return `
+          <div class="done-sub">
+            <div class="done-sub__row">
+              ${badge}
+              <span class="done-sub__time">${escapeHtml(timeText)}</span>
+              ${uploads.length ? `<span class="done-sub__time">${uploads.length} 个文件</span>` : ''}
+            </div>
+            ${comment}
+            ${files}
+            ${!uploads.length && !record.comment ? '<p class="done-sub__hint">这次提交没有附件，也没写说明。</p>' : ''}
+            ${draftHint}
+          </div>`;
+      }
+
+      async function toggleDoneSubmission(id) {
+        if (!id) return;
+        if (state.doneExpanded.has(id)) {
+          state.doneExpanded.delete(id);
+          renderDoneList();
+          return;
+        }
+        state.doneExpanded.add(id);
+        renderDoneList();
+
+        const entry = doneSubmissionEntry(id);
+        if (entry.state || entry.loading) return;
+        entry.loading = true;
+        entry.error = '';
+        renderDoneList();
+        try {
+          entry.state = await fetchSubmissionState(id);
+        } catch (error) {
+          entry.error = error && error.message ? error.message : '读取提交记录失败，请稍后重试。';
+        } finally {
+          entry.loading = false;
+          renderDoneList();
+        }
       }
 
       async function openDoneDialog() {
@@ -6556,6 +6798,8 @@
           }
           state.completedIds.delete(id);
           state.completedRecords = state.completedRecords.filter((row) => row.id !== id);
+          state.doneSubmissions.delete(id);
+          state.doneExpanded.delete(id);
           updateCompletedBadge();
           renderDoneList();
           broadcastDataChanged();
@@ -6592,6 +6836,8 @@
             }
             state.completedIds.delete(row.id);
             state.completedRecords = state.completedRecords.filter((entry) => entry.id !== row.id);
+            state.doneSubmissions.delete(row.id);
+            state.doneExpanded.delete(row.id);
             done += 1;
           } catch (error) {
             console.warn('[作业备忘] 恢复失败：', row.id, error);
@@ -6864,6 +7110,11 @@
       });
       els.doneRestoreAll.addEventListener('click', restoreAllCompletions);
       els.doneList.addEventListener('click', (event) => {
+        const peek = event.target.closest('[data-submission-id]');
+        if (peek) {
+          toggleDoneSubmission(peek.dataset.submissionId);
+          return;
+        }
         const button = event.target.closest('[data-restore-id]');
         if (button) restoreCompletion(button.dataset.restoreId, button);
       });
@@ -6970,6 +7221,21 @@
         submitDialogEl.addEventListener('cancel', (event) => {
           event.preventDefault();
           closeSubmitDialog(false);
+        });
+      }
+
+      const completeDialogEl = document.getElementById('completeDialog');
+      if (completeDialogEl) {
+        const okButton = document.getElementById('completeDialogOk');
+        const cancelButton = document.getElementById('completeDialogCancel');
+        if (okButton) okButton.addEventListener('click', () => closeCompleteDialog(true));
+        if (cancelButton) cancelButton.addEventListener('click', () => closeCompleteDialog(false));
+        completeDialogEl.addEventListener('cancel', (event) => {
+          event.preventDefault();
+          closeCompleteDialog(false);
+        });
+        completeDialogEl.addEventListener('click', (event) => {
+          if (event.target === completeDialogEl) closeCompleteDialog(false);
         });
       }
 

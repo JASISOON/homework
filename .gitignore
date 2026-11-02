@@ -32,10 +32,15 @@ dist_v*/
 
 # Inno Setup
 # 注意：release/ 是有意保留的交付目录（安装包 + SHA256SUMS），不要忽略它
-# release/ 下只跟踪 .exe 和 SHA256SUMS.txt；解压出来试用的子目录（几百个文件）不计入版本库
+# release/ 下只跟踪各版本的 .exe 和 SHA256SUMS.txt；
+# 在里面解压/试跑出来的子目录（如 release/作业备忘-绿色版-1.5.1/，几百个文件）一律不入库
 release/*/
 dist_installer/
 *.iss.bak
+
+# 一次性脚本（发 Release、算哈希之类，跑完即删；留在这儿防止手滑提交）
+_release_*.py
+_upload_*.py
 
 # ============================================================ 本地运行数据
 # 运行期数据实际写在 %LOCALAPPDATA%\HomeworkDesk\data，这里只是兜底防误提交

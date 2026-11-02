@@ -64,7 +64,7 @@ import themes as theme_mod
 
 
 APP_NAME = "HomeworkDesk"
-APP_VERSION = "1.5.2"
+APP_VERSION = "1.5.3"
 APP_DIR = Path(__file__).resolve().parent
 
 
