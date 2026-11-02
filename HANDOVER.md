@@ -366,7 +366,7 @@ pywebview 拿不到 WebView2 时只是抛异常，用户看到的就是「双击
 | GET | `/api/homework/{id}/detail` | 作业正文（已清洗 HTML）+ 附件清单；服务端缓存 10 分钟 |
 | POST | `/api/homework/{id}/attachments/{uploadId}/download` | 下载单个附件到桌面 |
 | POST | `/api/homework/{id}/attachments/download` | 下载该作业全部附件到桌面 |
-| GET | `/api/homework/{id}/submission` | 我在这条作业上的提交情况（最新一版 + 草稿） |
+| GET | `/api/homework/{id}/submission` | 我在这条作业上的提交情况（最新一版 + 草稿）；只按 `activity_id` + `student_id` 查，**不依赖待办列表**，所以已完成/已归档的作业也能查（1.5.3 的「提交记录」就靠它） |
 | POST | `/api/homework/{id}/submit` | 交作业（multipart：`files[]` + `comment` + `draft` + `zip` + `zipName`） |
 | POST | `/api/homework/{id}/retract` | 撤回某次提交（body：`{submissionId}`） |
 | POST | `/api/homework/{id}/complete` | 仅本机标记完成 |
@@ -563,7 +563,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 输出：
 
 - `dist\HomeworkDesk\HomeworkDesk.exe`：PyInstaller 的 onedir 产物目录
-- `..\version\作业备忘-安装程序-1.5.2.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
+- `..\version\作业备忘-安装程序-1.5.3.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
 
 ### 5.3 单独构建
 
@@ -595,19 +595,20 @@ py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 新版本只追加一行校验值，不覆盖旧包：
 
 ```powershell
-# 1. 构建，输出 ..\version\作业备忘-安装程序-1.5.2.exe
+# 1. 构建，输出 ..\version\作业备忘-安装程序-1.5.3.exe
 .\build.ps1
 
 # 2. 拷进 release（旧版本不要删，留作回滚）
-Copy-Item ..\version\作业备忘-安装程序-1.5.2.exe .\release\
+Copy-Item ..\version\作业备忘-安装程序-1.5.3.exe .\release\
 
 # 3. 在 SHA256SUMS.txt 末尾追加一行：小写 sha256 + 空格 + *文件名
-#    该文件是 UTF-8 无 BOM + CRLF，追加时保持原格式，不要整份重写
-$f = '.\release\作业备忘-安装程序-1.5.2.exe'
+#    该文件是 UTF-8 无 BOM + LF 行尾（.gitattributes 里 *.txt text eol=lf），
+#    追加时用 `n，不要用 `r`n，否则行尾混用会让整份文件在 diff 里重写
+$f = '.\release\作业备忘-安装程序-1.5.3.exe'
 $h = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
 [IO.File]::AppendAllText(
   (Resolve-Path .\release\SHA256SUMS.txt),
-  "$h *$([IO.Path]::GetFileName($f))`r`n",
+  "$h *$([IO.Path]::GetFileName($f))`n",
   (New-Object Text.UTF8Encoding($false))
 )
 
@@ -615,8 +616,14 @@ $h = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
 Get-Content .\release\SHA256SUMS.txt -Encoding utf8
 ```
 
-> 每行形如 `f9ea0cfd…bbde4 *作业备忘-安装程序-1.5.2.exe`，文件名前的 `*` 表示二进制模式。
-> Git Bash 里 `sha256sum -c` 会因 CRLF 报 `No such file or directory`，用 PowerShell 或 Python 逐行比对。
+> 每行形如 `a7376c3d…97049 *作业备忘-安装程序-1.5.3.exe`，文件名前的 `*` 表示二进制模式。
+> Git Bash 里 `sha256sum -c` 对中文文件名常报 `No such file or directory`，用 PowerShell 或 Python 逐行比对。
+
+> **本地产物分布**（都在仓库外，不入库）：
+> `..\version\` 只放安装程序 exe（1.1.0 起每个版本一个）；
+> `..\portable\` 专门放绿色版，直接把 `dist\HomeworkDesk` 整个目录复制成
+> `作业备忘-绿色版-X.Y.Z\`（**不打 zip**，目录里就是 exe + `_internal`，双击即用），
+> 只给自己试用，和发布无关。
 
 安装包约 13 MB，小于 GitHub 单文件限制，可以随 `release/` 一起提交；
 更推荐放进 GitHub Releases 作为附件，git 历史里就不会反复堆积二进制。
@@ -650,6 +657,17 @@ Get-Content .\release\SHA256SUMS.txt -Encoding utf8
 | 确认弹窗 | 弹窗标题/正文/文件清单/警告/按钮文案正确；取消后不发任何请求，已选文件仍在 |
 | 已提交 / 草稿两种状态 | mock 服务喂数据：显示「已提交 · 时间 + 文件 + 撤回」，主按钮变「再次提交」；草稿显示草稿徽标与时间 |
 | **真实提交 / 存草稿 / 撤回 / 上传字节** | **未验证**。往平台写东西需要用户点头，第一次真要交之前建议先拿一条无关作业试 |
+
+「已完成」+ 勾选确认 + 提交记录（1.5.2 / 1.5.3，假接口 + 无头 Edge，全程离屏）：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 勾选前确认 | 点圆圈弹「标记为已完成？」，内容为作业 / 课程 / 截止；取消后 `POST /complete` 调用 **0 次**，卡片与计数都没变 |
+| 确认后 | 一次 POST 成功，卡片 300 ms 后移除，待办计数减 1 |
+| 提交记录（有记录） | 显示「已提交 / 2026年11月1日 15:02 / 2 个文件 / 说明 / 实验报告.pdf 793 KB / 抓包结果.pcapng 236 KB」 |
+| 提交记录（无记录） | 显示「平台上没有查到提交记录：可能确实没交，也可能这条作业已经被老师关闭」，不伪造「未提交」 |
+| 展开缓存 | 同一作业展开→收起→再展开，`/submission` 只请求 1 次（缓存命中） |
+| 数据来源 | 走 `GET /api/homework/{id}/submission`，与卡片内提交状态同一接口；只按 activity + student 查，不依赖待办列表 |
 
 悬浮球验证（原生分层窗口版）：
 
