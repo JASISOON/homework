@@ -370,6 +370,8 @@ pywebview 拿不到 WebView2 时只是抛异常，用户看到的就是「双击
 | POST | `/api/homework/{id}/submit` | 交作业（multipart：`files[]` + `comment` + `draft` + `zip` + `zipName`） |
 | POST | `/api/homework/{id}/retract` | 撤回某次提交（body：`{submissionId}`） |
 | POST | `/api/homework/{id}/complete` | 仅本机标记完成 |
+| GET | `/api/completed` | 本机「已完成」记录（`items[{id,title,completedAt}]`，按完成时间倒序，不联网） |
+| POST | `/api/homework/{id}/uncomplete` | 撤销本机完成标记；有记录 200、无记录 404，成功时清空 `_todos_cache` |
 | GET | `/ball.html`（`/ball`） | 旧版悬浮球页面（程序不再使用，路由保留） |
 
 所有接口只监听 `127.0.0.1`，并检查 Host/Origin。密码不会返回给前端。
@@ -561,7 +563,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 输出：
 
 - `dist\HomeworkDesk\HomeworkDesk.exe`：PyInstaller 的 onedir 产物目录
-- `..\version\作业备忘-安装程序-1.5.1.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
+- `..\version\作业备忘-安装程序-1.5.2.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
 
 ### 5.3 单独构建
 
@@ -589,22 +591,32 @@ py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 
 ### 5.5 发布
 
-构建产物落在仓库外的 `..\version\`，仓库里**只保留当前版本**的安装包：
+构建产物落在仓库外的 `..\version\`；`release\` 里**保留历史各版本**的安装包（1.2.3 起都还在），
+新版本只追加一行校验值，不覆盖旧包：
 
 ```powershell
-# 1. 构建，输出 ..\version\作业备忘-安装程序-1.5.1.exe
+# 1. 构建，输出 ..\version\作业备忘-安装程序-1.5.2.exe
 .\build.ps1
 
-# 2. 换掉 release 里的旧包
-Remove-Item .\release\*.exe
-Copy-Item ..\version\作业备忘-安装程序-1.5.1.exe .\release\
+# 2. 拷进 release（旧版本不要删，留作回滚）
+Copy-Item ..\version\作业备忘-安装程序-1.5.2.exe .\release\
 
-# 3. 重算校验值
-#    文件名含中文，必须用 UTF-8 无 BOM 写，否则在别的编辑器里会变成 ???? 
-Get-ChildItem .\release\*.exe | ForEach-Object {
-    "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash)  $($_.Name)"
-} | Set-Content .\release\SHA256SUMS.txt -Encoding utf8
+# 3. 在 SHA256SUMS.txt 末尾追加一行：小写 sha256 + 空格 + *文件名
+#    该文件是 UTF-8 无 BOM + CRLF，追加时保持原格式，不要整份重写
+$f = '.\release\作业备忘-安装程序-1.5.2.exe'
+$h = (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
+[IO.File]::AppendAllText(
+  (Resolve-Path .\release\SHA256SUMS.txt),
+  "$h *$([IO.Path]::GetFileName($f))`r`n",
+  (New-Object Text.UTF8Encoding($false))
+)
+
+# 4. 核对（中文名读取要指定 UTF-8）
+Get-Content .\release\SHA256SUMS.txt -Encoding utf8
 ```
+
+> 每行形如 `f9ea0cfd…bbde4 *作业备忘-安装程序-1.5.2.exe`，文件名前的 `*` 表示二进制模式。
+> Git Bash 里 `sha256sum -c` 会因 CRLF 报 `No such file or directory`，用 PowerShell 或 Python 逐行比对。
 
 安装包约 13 MB，小于 GitHub 单文件限制，可以随 `release/` 一起提交；
 更推荐放进 GitHub Releases 作为附件，git 历史里就不会反复堆积二进制。

@@ -1169,6 +1169,157 @@
       font-size: 11.5px;
     }
 
+    /* 「已完成」入口：只查本机勾掉的记录，能恢复 */
+    .board-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 23px;
+      padding: 3px 10px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 999px;
+      color: var(--muted);
+      background: transparent;
+      font-family: inherit;
+      font-size: 10.5px;
+      font-weight: 650;
+      cursor: pointer;
+      transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+    }
+
+    .board-link:hover {
+      color: var(--accent-ink);
+      border-color: var(--green-line);
+      background: var(--green-soft);
+    }
+
+    .board-link .icon {
+      width: 12px;
+      height: 12px;
+    }
+
+    .board-link b {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .done-panel {
+      width: min(560px, calc(100vw - 30px));
+    }
+
+    .done-dialog {
+      width: min(560px, calc(100vw - 30px));
+    }
+
+    .done-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .done-search {
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 8px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      color: var(--ink);
+      background: var(--surface);
+      font-family: inherit;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .done-search:focus {
+      border-color: var(--green-line);
+      box-shadow: 0 0 0 3px var(--green-tint);
+    }
+
+    .done-total {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .done-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 12px;
+      max-height: min(46vh, 420px);
+      overflow: auto;
+    }
+
+    .done-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+
+    .done-item__main {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .done-item__title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .done-item__meta {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 10.5px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .done-item__btn {
+      flex: 0 0 auto;
+      padding: 6px 12px;
+      border: 1px solid var(--green-line);
+      border-radius: 9px;
+      color: var(--accent-ink);
+      background: var(--green-soft);
+      font-family: inherit;
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: filter 150ms ease, opacity 150ms ease;
+    }
+
+    .done-item__btn:hover {
+      filter: brightness(0.96);
+    }
+
+    .done-item__btn[disabled] {
+      opacity: 0.55;
+      cursor: default;
+    }
+
+    .done-empty {
+      margin: 0;
+      padding: 22px 10px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .done-dialog .theme-actions {
+      margin-top: 12px;
+    }
+
     .legend {
       display: flex;
       align-items: center;
@@ -3913,6 +4064,10 @@
             <div class="board-title-row">
               <h2 id="boardTitle">待办作业</h2>
               <span class="board-count" id="boardCount">读取中</span>
+              <button class="board-link" id="completedBtn" type="button" aria-haspopup="dialog" aria-controls="doneDialog" title="查看本机勾成「已完成」的作业，可以把它们恢复">
+                <svg class="icon" aria-hidden="true"><use href="#i-inbox"></use></svg>
+                <span>已完成 <b id="completedCount">0</b></span>
+              </button>
             </div>
             <p class="board-sub">逾期作业置顶 · 其余按截止时间升序 · 完成状态保存在本机</p>
           </div>
@@ -4101,6 +4256,48 @@
     </div>
   </dialog>
 
+  <dialog class="theme-dialog done-dialog" id="doneDialog" aria-labelledby="doneTitle">
+    <div class="theme-panel done-panel">
+      <button class="auth-close" id="doneClose" type="button" aria-label="关闭已完成列表">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+      </button>
+
+      <header class="auth-header">
+        <span class="theme-mark" aria-hidden="true"><svg class="icon"><use href="#i-inbox"></use></svg></span>
+        <div>
+          <p class="auth-eyebrow">ARCHIVE / 已完成</p>
+          <h2 id="doneTitle">被勾掉的作业</h2>
+        </div>
+      </header>
+
+      <p class="auth-desc">
+        这里只是本机的「我不想再看到它」清单，LMS 上什么都没变。误点了就在下面点「恢复」，它会回到待办列表。
+      </p>
+
+      <div class="done-toolbar">
+        <input class="done-search" id="doneSearch" type="search" autocomplete="off" spellcheck="false" placeholder="搜标题…" aria-label="搜索已完成的作业">
+        <span class="done-total" id="doneTotal">0 条</span>
+      </div>
+
+      <div class="done-list" id="doneList" role="list"></div>
+
+      <div class="theme-actions">
+        <button class="theme-action" id="doneRestoreAll" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-refresh"></use></svg>
+          <span>全部恢复</span>
+        </button>
+        <button class="theme-action" id="doneRefresh" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-list"></use></svg>
+          <span>重新读取</span>
+        </button>
+      </div>
+
+      <p class="theme-note">
+        恢复后如果这条作业在平台上已经截止、或者平台不再把它列进待办，主界面不会重新出现它，但本机的「已完成」记录已经删掉。
+      </p>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite">
     <span class="toast-icon" aria-hidden="true"><svg class="icon"><use href="#i-check"></use></svg></span>
     <span id="toastMessage"></span>
@@ -4251,6 +4448,10 @@
         assignments: [],
         completedIds: new Set(),
         pendingCompletions: new Set(),
+        // 本机「已完成」记录（1.5.2）：可查询、可恢复
+        completedRecords: [],
+        restoringIds: new Set(),
+        doneQuery: '',
         loading: false,
         hasLoaded: false,
         error: null,
@@ -4337,7 +4538,16 @@
         themeImportApply: document.getElementById('themeImportApply'),
         themeFileInput: document.getElementById('themeFileInput'),
         themeError: document.getElementById('themeError'),
-        themeCopyBtn: document.getElementById('themeCopyBtn')
+        themeCopyBtn: document.getElementById('themeCopyBtn'),
+        completedBtn: document.getElementById('completedBtn'),
+        completedCount: document.getElementById('completedCount'),
+        doneDialog: document.getElementById('doneDialog'),
+        doneClose: document.getElementById('doneClose'),
+        doneSearch: document.getElementById('doneSearch'),
+        doneTotal: document.getElementById('doneTotal'),
+        doneList: document.getElementById('doneList'),
+        doneRestoreAll: document.getElementById('doneRestoreAll'),
+        doneRefresh: document.getElementById('doneRefresh')
       };
 
       class ApiError extends Error {
@@ -5837,6 +6047,7 @@
         updateStats(items);
         updateFocusCard(items);
         renderBoard(items);
+        updateCompletedBadge();
         hydrateOpenDetails();
         state.renderedAt = Date.now();
       }
@@ -6179,6 +6390,11 @@
         try {
           await markHomeworkCompleted(id, item.name);
           state.completedIds.add(id);
+          state.completedRecords = [
+            { id, title: item.name, course: item.course || '', completedAt: new Date().toISOString() },
+            ...state.completedRecords.filter((row) => row.id !== id)
+          ];
+          updateCompletedBadge();
 
           const card = button.closest('.task');
           if (card) card.classList.add('is-removing');
@@ -6187,7 +6403,7 @@
           updateStats(currentItems);
           updateFocusCard(currentItems);
           broadcastDataChanged();
-          showToast(`已完成「${item.name}」· 仅从本应用移除`);
+          showToast(`已完成「${item.name}」· 点错了可在「已完成」里恢复`);
           setText(els.boardCount, `${currentItems.length} 项待办`);
 
           setTimeout(() => {
@@ -6205,6 +6421,188 @@
           button.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>';
         } finally {
           state.pendingCompletions.delete(id);
+        }
+      }
+
+      /* ==========================================================
+         已完成 / 恢复（1.5.2）
+         ========================================================== */
+      function updateCompletedBadge() {
+        const count = state.completedRecords.length;
+        if (els.completedCount) setText(els.completedCount, String(count));
+        if (els.completedBtn) {
+          els.completedBtn.title = count
+            ? `${count} 条作业被勾成已完成，点开可以恢复`
+            : '还没有被勾成已完成的作业';
+        }
+      }
+
+      async function fetchCompletedRecords() {
+        if (IS_MOCK) {
+          await wait(120);
+          return state.assignments
+            .filter((item) => item.completed || state.completedIds.has(item.id))
+            .map((item) => ({
+              id: item.id,
+              title: item.name,
+              course: item.course || '',
+              completedAt: ''
+            }));
+        }
+        const payload = await requestJSON('/api/completed', { method: 'GET' });
+        return Array.isArray(payload.items) ? payload.items : [];
+      }
+
+      async function loadCompletedRecords() {
+        try {
+          state.completedRecords = await fetchCompletedRecords();
+        } catch (error) {
+          console.warn('[作业备忘] 读取已完成记录失败：', error);
+          state.completedRecords = [];
+        }
+        updateCompletedBadge();
+        if (els.doneDialog && els.doneDialog.open) renderDoneList();
+      }
+
+      function formatCompletedAt(value) {
+        if (!value) return '本机记录';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '本机记录';
+        return `完成于 ${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      }
+
+      function getFilteredCompletedRecords() {
+        const query = state.doneQuery.trim().toLowerCase();
+        if (!query) return state.completedRecords;
+        return state.completedRecords.filter((row) =>
+          `${row.title || ''} ${row.course || ''}`.toLowerCase().includes(query)
+        );
+      }
+
+      function renderDoneList() {
+        if (!els.doneList) return;
+        const rows = getFilteredCompletedRecords();
+        if (els.doneTotal) {
+          const total = state.completedRecords.length;
+          setText(
+            els.doneTotal,
+            state.doneQuery.trim() ? `${rows.length} / ${total} 条` : `${total} 条`
+          );
+        }
+        if (els.doneRestoreAll) {
+          els.doneRestoreAll.disabled = rows.length === 0;
+        }
+
+        if (!rows.length) {
+          els.doneList.innerHTML = state.completedRecords.length
+            ? '<p class="done-empty">没有匹配的标题，换个关键词试试。</p>'
+            : '<p class="done-empty">这里还是空的。在待办卡片上点左边那个圆圈，作业就会挪到这里来。</p>';
+          return;
+        }
+
+        els.doneList.innerHTML = rows
+          .map((row) => {
+            const busy = state.restoringIds.has(row.id);
+            return `
+              <div class="done-item" role="listitem" data-done-id="${escapeHtml(row.id)}">
+                <div class="done-item__main">
+                  <p class="done-item__title" title="${escapeHtml(row.title || '（没有标题）')}">${escapeHtml(row.title || '（没有标题）')}</p>
+                  <p class="done-item__meta">${escapeHtml(row.course ? `${row.course} · ` : '')}${escapeHtml(formatCompletedAt(row.completedAt))}</p>
+                </div>
+                <button
+                  class="done-item__btn"
+                  type="button"
+                  data-restore-id="${escapeHtml(row.id)}"
+                  ${busy ? 'disabled' : ''}
+                  aria-label="恢复「${escapeHtml(row.title || '这条作业')}」到待办"
+                >${busy ? '恢复中…' : '恢复'}</button>
+              </div>`;
+          })
+          .join('');
+      }
+
+      async function openDoneDialog() {
+        if (!els.doneDialog) return;
+        if (!els.doneDialog.open) {
+          els.doneDialog.showModal();
+        }
+        renderDoneList();
+        await loadCompletedRecords();
+        renderDoneList();
+        if (els.doneSearch) {
+          els.doneSearch.focus();
+          els.doneSearch.select();
+        }
+      }
+
+      function closeDoneDialog() {
+        if (els.doneDialog && els.doneDialog.open) els.doneDialog.close();
+      }
+
+      async function restoreCompletion(id, button) {
+        if (!id || state.restoringIds.has(id)) return;
+        const record = state.completedRecords.find((row) => row.id === id);
+        state.restoringIds.add(id);
+        if (button) {
+          button.disabled = true;
+          button.textContent = '恢复中…';
+        }
+        try {
+          if (!IS_MOCK) {
+            await requestJSON(`/api/homework/${encodeURIComponent(id)}/uncomplete`, {
+              method: 'POST',
+              body: JSON.stringify({})
+            });
+          }
+          state.completedIds.delete(id);
+          state.completedRecords = state.completedRecords.filter((row) => row.id !== id);
+          updateCompletedBadge();
+          renderDoneList();
+          broadcastDataChanged();
+          showToast(`已恢复「${(record && record.title) || '这条作业'}」`);
+          // 平台仍把它当待办的话，重新拉一次就回到列表里了
+          if (!state.loading) {
+            await loadAssignments({ force: true });
+          }
+        } catch (error) {
+          console.error('[作业备忘] 恢复失败：', error);
+          showToast(error.message || '恢复失败，请重试', 'error');
+          renderDoneList();
+        } finally {
+          state.restoringIds.delete(id);
+        }
+      }
+
+      async function restoreAllCompletions() {
+        const rows = getFilteredCompletedRecords();
+        if (!rows.length) return;
+        const rolling = window.confirm(`把${state.doneQuery.trim() ? '筛选出的 ' : ''}${rows.length} 条作业全部恢复成未完成？`);
+        if (!rolling) return;
+        els.doneRestoreAll.disabled = true;
+        let done = 0;
+        for (const row of rows) {
+          try {
+            if (IS_MOCK) {
+              state.completedIds.delete(row.id);
+            } else {
+              await requestJSON(`/api/homework/${encodeURIComponent(row.id)}/uncomplete`, {
+                method: 'POST',
+                body: JSON.stringify({})
+              });
+            }
+            state.completedIds.delete(row.id);
+            state.completedRecords = state.completedRecords.filter((entry) => entry.id !== row.id);
+            done += 1;
+          } catch (error) {
+            console.warn('[作业备忘] 恢复失败：', row.id, error);
+          }
+        }
+        updateCompletedBadge();
+        renderDoneList();
+        broadcastDataChanged();
+        showToast(`已恢复 ${done} 条作业`);
+        if (!state.loading) {
+          await loadAssignments({ force: true });
         }
       }
 
@@ -6450,9 +6848,28 @@
       );
       els.floatToggle.addEventListener('click', toggleFloatingMode);
 
+      els.completedBtn.addEventListener('click', openDoneDialog);
+      els.doneClose.addEventListener('click', closeDoneDialog);
+      els.doneDialog.addEventListener('click', (event) => {
+        if (event.target === els.doneDialog) closeDoneDialog();
+      });
+      els.doneSearch.addEventListener('input', () => {
+        state.doneQuery = els.doneSearch.value || '';
+        renderDoneList();
+      });
+      els.doneRefresh.addEventListener('click', async () => {
+        await loadCompletedRecords();
+        renderDoneList();
+        showToast('已重新读取本机的已完成记录');
+      });
+      els.doneRestoreAll.addEventListener('click', restoreAllCompletions);
+      els.doneList.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-restore-id]');
+        if (button) restoreCompletion(button.dataset.restoreId, button);
+      });
+
       els.themeBtn.addEventListener('click', openThemeDialog);
-      els.themeClose.addEventListener('click', closeThemeDialog);
-      els.themeDialog.addEventListener('click', (event) => {
+      els.themeClose.addEventListener('click', closeThemeDialog);      els.themeDialog.addEventListener('click', (event) => {
         if (event.target === els.themeDialog) closeThemeDialog();
       });
       els.themeImportToggle.addEventListener('click', toggleThemeImport);
@@ -6724,6 +7141,7 @@
         }
         updateAccountUI();
         await loadAssignments({ initial: true });
+        await loadCompletedRecords();
       })();
     })();
   </script>

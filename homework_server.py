@@ -64,7 +64,7 @@ import themes as theme_mod
 
 
 APP_NAME = "HomeworkDesk"
-APP_VERSION = "1.5.1"
+APP_VERSION = "1.5.2"
 APP_DIR = Path(__file__).resolve().parent
 
 
@@ -691,6 +691,33 @@ class DataStore:
     def completed_ids(self) -> set[str]:
         state = self.load_state()
         return set(state.get("completed", {}).keys())
+
+    def completed_records(self) -> list[dict[str, Any]]:
+        """本机「已完成」记录，按完成时间倒序。"""
+        state = self.load_state()
+        completed = state.get("completed", {})
+        rows: list[dict[str, Any]] = []
+        for homework_id, info in completed.items():
+            payload = info if isinstance(info, dict) else {}
+            rows.append(
+                {
+                    "id": str(homework_id),
+                    "title": str(payload.get("title") or ""),
+                    "completedAt": str(payload.get("completedAt") or ""),
+                }
+            )
+        rows.sort(key=lambda row: row["completedAt"], reverse=True)
+        return rows
+
+    def unmark_completed(self, homework_id: str) -> bool:
+        """撤销本机完成标记；返回是否真的删掉了记录。"""
+        state = self.load_state()
+        completed = state.get("completed", {})
+        if homework_id not in completed:
+            return False
+        completed.pop(homework_id, None)
+        self.save_state(state)
+        return True
 
     def load_custom_themes(self) -> list[dict[str, Any]]:
         data = self._read_json(self.themes_path, {})
@@ -1778,6 +1805,14 @@ class SzuAuth:
     # ------------------------------------------------------------------
     # 取数
     # ------------------------------------------------------------------
+    def restore_completion(self, homework_id: str) -> bool:
+        """撤销本机完成标记，并让上次被过滤掉的那份待办缓存失效。"""
+        with self.lock:
+            removed = self.store.unmark_completed(homework_id)
+            if removed:
+                self._todos_cache = None
+            return removed
+
     def get_todos(self, force: bool = False) -> dict[str, Any]:
         with self.lock:
             if not force and self._todos_cache:
@@ -2186,6 +2221,14 @@ class AppContext:
                 self.store.save_prefs(prefs)
         # 桌面壳在启动时挂上来，用来让悬浮球跟着换色
         self.on_theme_changed: Any = None
+
+    def completed_records(self) -> list[dict[str, Any]]:
+        """本机「已完成」清单（纯本地，不联网）。"""
+        return self.store.completed_records()
+
+    def restore_completion(self, homework_id: str) -> bool:
+        """把一条被误勾完成的作业恢复回待办。"""
+        return self.auth.restore_completion(homework_id)
 
     def homework(self, force: bool = False) -> dict[str, Any]:
         payload = self.auth.get_todos(force=force)
@@ -2775,6 +2818,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"code": "SERVER_ERROR", "message": f"读取提交状态失败：{exc}"})
             return
 
+        if path == "/api/completed":
+            self._send_json(
+                200,
+                {
+                    "items": self.context.completed_records(),
+                    "completionMode": "local",
+                },
+            )
+            return
+
         if path == "/api/themes":
             self._send_json(200, self.context.themes_payload())
             return
@@ -3036,6 +3089,33 @@ class ApiHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 LOG.exception("撤回提交失败")
                 self._send_json(500, {"code": "SERVER_ERROR", "message": f"撤回失败：{exc}"})
+            return
+
+        match = re.fullmatch(r"/api/homework/(.+)/uncomplete", path)
+        if match:
+            self._discard_body()
+            homework_id = unquote(match.group(1))
+            if not homework_id or len(homework_id) > 200:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": "作业 ID 无效。"})
+                return
+            try:
+                removed = self.context.restore_completion(homework_id)
+            except Exception as exc:
+                LOG.exception("恢复完成标记失败")
+                self._send_json(500, {"code": "SERVER_ERROR", "message": f"恢复失败：{exc}"})
+                return
+            if not removed:
+                self._send_json(404, {"code": "NOT_FOUND", "message": "这条作业没有本机完成记录。"})
+                return
+            self._send_json(
+                200,
+                {
+                    "ok": True,
+                    "id": homework_id,
+                    "message": "已恢复，重新算作未完成。",
+                    "completionMode": "local",
+                },
+            )
             return
 
         match = re.fullmatch(r"/api/homework/(.+)/complete", path)

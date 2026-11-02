@@ -32,6 +32,8 @@ dist_v*/
 
 # Inno Setup
 # 注意：release/ 是有意保留的交付目录（安装包 + SHA256SUMS），不要忽略它
+# release/ 下只跟踪 .exe 和 SHA256SUMS.txt；解压出来试用的子目录（几百个文件）不计入版本库
+release/*/
 dist_installer/
 *.iss.bak
 
