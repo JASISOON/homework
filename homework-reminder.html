@@ -1485,6 +1485,128 @@
       background: var(--surface);
     }
 
+    /* ---------- 来源分区（畅课 / OJ 各一块，同时显示） ---------- */
+    .source-board {
+      margin-top: 30px;
+    }
+
+    .source-board:first-child {
+      margin-top: 2px;
+    }
+
+    .source-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 8px 9px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .source-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--ink-soft);
+      font-size: 12.5px;
+      font-weight: 750;
+      letter-spacing: 0.02em;
+    }
+
+    .source-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 3px var(--green-soft);
+    }
+
+    .source-board--oj .source-dot {
+      background: var(--orange);
+      box-shadow: 0 0 0 3px var(--orange-soft);
+    }
+
+    .source-meta {
+      color: var(--muted-weak);
+      font-size: 10.5px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .source-empty {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 14px 10px 2px;
+      color: var(--muted);
+      font-size: 11.5px;
+      line-height: 1.7;
+    }
+
+    .source-action {
+      padding: 4px 11px;
+      border: 1px solid var(--green-line);
+      border-radius: 999px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.18s ease, transform 0.18s ease;
+    }
+
+    .source-action:hover {
+      background: var(--green-tint);
+      transform: translateY(-1px);
+    }
+
+    /* 两个来源左右并排；窗口窄了自动退回上下排列 */
+    .source-split {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .source-split .source-board {
+      margin-top: 0;
+    }
+
+    /* 半宽后卡片变窄：把「剩余时间」从右侧竖栏挪到内容下方，省出约 130px 给标题 */
+    .source-split .task {
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 11px;
+      padding: 14px 14px 13px 13px;
+      border-radius: 14px;
+    }
+
+    .source-split .task-side {
+      grid-column: 2;
+      grid-row: 2;
+      flex-direction: row;
+      align-items: baseline;
+      justify-content: flex-end;
+      gap: 6px;
+      min-width: 0;
+      margin-top: 4px;
+      padding-left: 0;
+      border-left: 0;
+    }
+
+    @media (max-width: 1080px) {
+      .source-split {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0;
+      }
+
+      .source-split .source-board + .source-board {
+        margin-top: 26px;
+      }
+    }
+
     /* ---------- 分组 ---------- */
     .group {
       margin-top: 6px;
@@ -1519,6 +1641,10 @@
 
     .group-title--overdue {
       color: var(--danger-ink);
+    }
+
+    .group-title--submitted {
+      color: var(--green);
     }
 
     .group-meta {
@@ -1735,6 +1861,11 @@
       background: var(--orange-tint);
     }
 
+    .status-pill--submitted {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
     .status-dot {
       width: 5px;
       height: 5px;
@@ -1785,6 +1916,11 @@
       line-height: 1.65;
       letter-spacing: 0.04em;
       vertical-align: 1px;
+    }
+
+    /* OJ 的备注行是纯状态描述（题量/得分），不需要「备注」小标签 */
+    .task-note--oj {
+      color: var(--muted-strong);
     }
 
     /* 作业内容 + 附件（1.4.1） */
@@ -2941,6 +3077,58 @@
     }
 
     /* ============================================================
+       OJ 判题系统（2.0.0）：状态入口
+       ============================================================ */
+    .oj-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex: 0 0 auto;
+      min-height: 39px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--ink-soft);
+      background: rgba(var(--surface-rgb), 0.64);
+      font: inherit;
+      font-size: 10.5px;
+      font-weight: 750;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    }
+
+    .oj-btn:hover {
+      border-color: var(--green-line);
+      background: var(--surface);
+      transform: translateY(-1px);
+    }
+
+    .oj-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--muted-weak);
+      box-shadow: 0 0 0 3px transparent;
+      transition: background 160ms ease, box-shadow 160ms ease;
+    }
+
+    .oj-btn[data-state="on"] .oj-dot {
+      background: var(--green);
+      box-shadow: 0 0 0 3px rgba(var(--green-rgb), 0.16);
+    }
+
+    .oj-btn[data-state="offline"] .oj-dot {
+      background: var(--orange);
+      box-shadow: 0 0 0 3px rgba(var(--orange-rgb), 0.16);
+    }
+
+    .oj-btn[data-state="error"] .oj-dot {
+      background: var(--red);
+      box-shadow: 0 0 0 3px rgba(var(--red-rgb), 0.16);
+    }
+
+    /* ============================================================
        深大优课连接 / 登录
        ============================================================ */
     .account-btn {
@@ -3049,6 +3237,80 @@
       font-weight: 650;
       letter-spacing: 0.02em;
       white-space: nowrap;
+    }
+
+    /* OJ（2.0.0）：来源徽标与「已在平台提交」的卡片 */
+    .oj-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 7px;
+      border: 1px solid var(--green-line);
+      border-radius: 999px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    .task--submitted {
+      --accent: var(--green-line);
+      border-color: var(--green-line);
+      background: rgba(var(--green-rgb), 0.045);
+      box-shadow: none;
+    }
+
+    .task--submitted .task-title {
+      color: var(--ink-soft);
+      font-weight: 700;
+    }
+
+    .task--submitted .task-check {
+      color: var(--green);
+      border-color: var(--green-line);
+      background: var(--green-soft);
+      cursor: default;
+      opacity: 1;
+    }
+
+    .task--submitted .countdown-label {
+      color: var(--muted);
+    }
+
+    .task-score {
+      color: var(--green);
+      font-size: 15px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
+    }
+
+    .task-score small {
+      color: var(--muted);
+      font-size: 9.5px;
+      font-weight: 700;
+    }
+
+    .task-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 2px;
+      padding: 0;
+      border: 0;
+      color: var(--green);
+      background: none;
+      font: inherit;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .task-link:hover {
+      color: var(--green-dark);
     }
 
     .completion-note {
@@ -3389,6 +3651,22 @@
       justify-content: space-between;
       gap: 12px;
       margin-top: 15px;
+    }
+
+    .auth-base-hint {
+      margin: 8px 0 0;
+      color: var(--muted-weak);
+      font-size: 9px;
+      letter-spacing: 0.01em;
+    }
+
+    .auth-base-hint code {
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: var(--muted-strong);
+      background: var(--surface-tint);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 9px;
     }
 
     .auth-footer-actions a,
@@ -4026,6 +4304,10 @@
             <span class="account-sub" id="accountSub">连接深大优课</span>
           </span>
         </button>
+        <button class="oj-btn" id="ojBtn" type="button" data-state="off" aria-haspopup="dialog" aria-controls="ojDialog" aria-label="OJ 判题系统连接状态" title="OJ 判题系统（实验与得分）">
+          <span class="oj-dot" id="ojDot" aria-hidden="true"></span>
+          <span id="ojBtnLabel">OJ</span>
+        </button>
         <div class="update-block">
           <span class="source-pill" id="sourcePill">
             <span class="source-dot" aria-hidden="true"></span>
@@ -4226,6 +4508,70 @@
         <a href="https://lms.szu.edu.cn/user/index" target="_blank" rel="noreferrer">打开深大优课 <span aria-hidden="true">↗</span></a>
         <button class="auth-logout" id="authLogout" type="button" hidden>退出并清除登录信息</button>
       </div>
+    </div>
+  </dialog>
+
+  <dialog class="auth-dialog" id="ojDialog" aria-labelledby="ojTitle" aria-describedby="ojDesc">
+    <div class="auth-panel">
+      <button class="auth-close" id="ojClose" type="button" aria-label="关闭 OJ 登录窗口">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+      </button>
+
+      <header class="auth-header">
+        <span class="auth-mark" aria-hidden="true"><svg class="icon"><use href="#i-list"></use></svg></span>
+        <div>
+          <p class="auth-eyebrow">ONLINE JUDGE / 校内判题系统</p>
+          <h2 id="ojTitle">连接 OJ 实验清单</h2>
+        </div>
+      </header>
+
+      <p class="auth-desc" id="ojDesc">
+        OJ 部署在校内网，只有连着校园网或 VPN 才能访问。登录一次后，本机会加密保存会话，之后自动同步实验与判题得分。
+      </p>
+
+      <div class="auth-current" id="ojStatus" hidden></div>
+
+      <form class="auth-form" id="ojForm" novalidate>
+        <label class="auth-field">
+          <span>学号 / 用户名</span>
+          <span class="auth-input-wrap">
+            <input class="auth-input" id="ojUsername" name="ojUsername" type="text" autocomplete="username" placeholder="请输入 OJ 账号" maxlength="100" spellcheck="false">
+          </span>
+        </label>
+
+        <label class="auth-field">
+          <span>OJ 密码</span>
+          <span class="auth-input-wrap">
+            <input class="auth-input" id="ojPassword" name="ojPassword" type="password" autocomplete="current-password" placeholder="请输入 OJ 密码" maxlength="256">
+          </span>
+        </label>
+
+        <div class="auth-field">
+          <span>图形验证码</span>
+          <div class="captcha-row">
+            <input class="auth-input" id="ojCaptcha" name="ojCaptcha" type="text" inputmode="text" autocomplete="off" placeholder="输入图片中的字符" maxlength="10">
+            <img class="captcha-image" id="ojCaptchaImage" alt="点击刷新验证码" title="点击刷新验证码" role="button" tabindex="0">
+          </div>
+        </div>
+
+        <p class="auth-security">
+          <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
+          <span>会话凭据只保存在本机，用 Windows 当前用户凭据加密；本应用只读取实验清单和得分，<strong>不会代替你提交代码</strong>。</span>
+        </p>
+
+        <p class="auth-error" id="ojError" role="alert" hidden></p>
+
+        <button class="auth-submit" id="ojSubmit" type="submit">
+          <svg class="icon" aria-hidden="true"><use href="#i-refresh"></use></svg>
+          <span id="ojSubmitLabel">登录并同步</span>
+        </button>
+      </form>
+
+      <div class="auth-footer-actions">
+        <a id="ojBaseLink" href="http://172.31.221.62/" target="_blank" rel="noreferrer">打开 OJ <span aria-hidden="true">↗</span></a>
+        <button class="auth-logout" id="ojLogout" type="button" hidden>退出并清除 OJ 会话</button>
+      </div>
+      <p class="auth-base-hint">服务地址：<code id="ojBase">http://172.31.221.62</code></p>
     </div>
   </dialog>
 
@@ -4531,6 +4877,9 @@
         hasLoaded: false,
         error: null,
         authRequired: false,
+        // 只登录了 OJ 时的降级状态：畅课要登录，但列表里已经有 OJ 的内容，
+        // 这时不再自动弹登录框挡住列表，只在畅课那块留一个登录按钮。
+        authDegraded: false,
         auth: {
           status: null,
           user: null,
@@ -4549,6 +4898,16 @@
         completeDialog: null,
         doneSubmissions: new Map(),
         doneExpanded: new Set(),
+        // OJ（2.0.0）：第二个作业源的状态与登录流程
+        oj: {
+          configured: false,
+          account: '',
+          online: null,
+          lastSync: '',
+          error: ''
+        },
+        ojCaptcha: null,
+        ojLoginPending: false,
         prefetching: false,
         loginPending: false,
         toastTimer: null,
@@ -4626,7 +4985,25 @@
         doneTotal: document.getElementById('doneTotal'),
         doneList: document.getElementById('doneList'),
         doneRestoreAll: document.getElementById('doneRestoreAll'),
-        doneRefresh: document.getElementById('doneRefresh')
+        doneRefresh: document.getElementById('doneRefresh'),
+        // OJ（2.0.0）
+        ojBtn: document.getElementById('ojBtn'),
+        ojDot: document.getElementById('ojDot'),
+        ojBtnLabel: document.getElementById('ojBtnLabel'),
+        ojDialog: document.getElementById('ojDialog'),
+        ojClose: document.getElementById('ojClose'),
+        ojStatus: document.getElementById('ojStatus'),
+        ojForm: document.getElementById('ojForm'),
+        ojUsername: document.getElementById('ojUsername'),
+        ojPassword: document.getElementById('ojPassword'),
+        ojCaptcha: document.getElementById('ojCaptcha'),
+        ojCaptchaImage: document.getElementById('ojCaptchaImage'),
+        ojCaptchaRefresh: document.getElementById('ojCaptchaRefresh'),
+        ojError: document.getElementById('ojError'),
+        ojSubmit: document.getElementById('ojSubmit'),
+        ojSubmitLabel: document.getElementById('ojSubmitLabel'),
+        ojLogout: document.getElementById('ojLogout'),
+        ojBase: document.getElementById('ojBase')
       };
 
       class ApiError extends Error {
@@ -4748,7 +5125,8 @@
             completed: toBoolean(completedValue),
             notes: notesValue === undefined ? '' : String(notesValue),
             type: typeValue === undefined ? '' : String(typeValue),
-            source: String(row.source ?? '')
+            source: String(row.source ?? ''),
+            oj: row.oj && typeof row.oj === 'object' ? row.oj : null
           });
         });
 
@@ -4842,10 +5220,14 @@
       function getVisibleItems(now = Date.now()) {
         return state.assignments
           .filter((item) => !item.completed && !state.completedIds.has(item.id))
-          .map((item) => ({
-            ...item,
-            meta: classifyHomework(item, now)
-          }));
+          .map((item) => {
+            const meta = classifyHomework(item, now);
+            // OJ 上已经交过的实验：不再参与逾期/紧急分级，单独成组展示得分
+            if (item.oj && item.oj.submitted) {
+              return { ...item, meta: { ...meta, level: 'submitted', label: '已提交' } };
+            }
+            return { ...item, meta };
+          });
       }
 
       function splitGroups(items) {
@@ -4853,13 +5235,17 @@
           (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
         );
         const overdue = sorted.filter((item) => item.meta.level === 'overdue');
-        const upcoming = sorted.filter((item) => item.meta.level !== 'overdue');
-        return { overdue, upcoming, sorted };
+        const submitted = sorted.filter((item) => item.meta.level === 'submitted');
+        const upcoming = sorted.filter(
+          (item) => item.meta.level !== 'overdue' && item.meta.level !== 'submitted'
+        );
+        return { overdue, upcoming, submitted, sorted };
       }
 
       function getCounts(items) {
         return items.reduce(
           (counts, item) => {
+            if (item.meta.level === 'submitted') return counts;
             counts.total += 1;
             if (item.meta.level === 'overdue') counts.overdue += 1;
             if (item.meta.level === 'urgent') counts.urgent += 1;
@@ -4954,12 +5340,16 @@
         const payload = await requestJSON(`/api/homework${suffix}`, { method: 'GET' });
         if (payload.status) state.auth.status = payload.status;
         if (payload.user) state.auth.user = payload.user;
+        if (payload.oj) state.oj = payload.oj;
 
         return {
           assignments: normalizeHomeworkList(payload),
           updatedAt: payload.updatedAt ? new Date(payload.updatedAt) : new Date(),
           user: payload.user || null,
-          status: payload.status || null
+          status: payload.status || null,
+          // 畅课还差一次登录时，服务端会在 200 里带上 lmsAuth；
+          // 别在这里丢掉，否则前端会误以为畅课已连上
+          lmsAuth: payload.lmsAuth || null
         };
       }
 
@@ -5063,7 +5453,8 @@
           return;
         }
         if (state.authRequired) {
-          setText(els.sourceLabel, '未登录');
+          // OJ 已经连上时，「未登录」指的是畅课这边，标清楚免得看着像 OJ 掉线
+          setText(els.sourceLabel, state.oj && state.oj.configured ? '畅课未登录' : '未登录');
           return;
         }
         if (state.error) {
@@ -5247,7 +5638,7 @@
         els.focusCard.dataset.level = level;
         els.focusBadge.dataset.level = level;
         setText(els.focusBadge, focus.meta.label || '待完成');
-        setText(els.focusCourse, focus.course);
+        setText(els.focusCourse, focus.source === 'OJ' ? `OJ / ${focus.course}` : focus.course);
         setText(els.focusName, focus.name);
         els.focusName.title = focus.name;
         setText(els.focusTimeLabel, level === 'overdue' ? '已超时' : '距离截止');
@@ -5961,12 +6352,21 @@
         const due = new Date(item.dueDate);
         const dueText = formatDueDate(due);
         const countdown = formatCountdown(item.meta.remaining);
+        // OJ（2.0.0）：OJ 的实验走自己的展示规则——没有畅课的正文/附件，
+        // 已经在平台上交过的也不再让用户勾选。
+        const isOj = Boolean(item.oj);
+        const submitted = Boolean(isOj && item.oj.submitted);
+        const judged = submitted && Boolean(item.oj.judged);
+        const hasScore = judged && item.oj.score !== null && item.oj.score !== undefined;
         const note = item.notes
-          ? `<p class="task-note" title="${escapeHtml(item.notes)}"><span class="note-label">备注</span>${escapeHtml(item.notes)}</p>`
+          ? isOj
+            ? `<p class="task-note task-note--oj" title="${escapeHtml(item.notes)}">${escapeHtml(item.notes)}</p>`
+            : `<p class="task-note" title="${escapeHtml(item.notes)}"><span class="note-label">备注</span>${escapeHtml(item.notes)}</p>`
           : '';
         const typeChip = item.type
           ? `<span class="type-chip">${escapeHtml(item.type)}</span>`
           : '';
+        const ojChip = isOj ? '<span class="oj-chip">OJ</span>' : '';
         const detailId = String(item.id);
         const detailOpen = state.openDetails.has(detailId);
         const cachedDetail = state.details.get(detailId);
@@ -5980,30 +6380,9 @@
           ? renderDetailBody(cachedDetail)
           : '<p class="detail-loading">正在读取作业内容…</p>';
 
-        return `
-          <article class="task task--${level}" data-task-id="${escapeHtml(item.id)}" data-level="${level}" style="--task-index:${index}">
-            <div class="task-checkcell">
-              <button
-                class="task-check"
-                type="button"
-                role="checkbox"
-                aria-checked="false"
-                data-complete-id="${escapeHtml(item.id)}"
-                aria-label="标记「${escapeHtml(item.name)}」为已完成"
-                title="标记为已完成（仅本应用）"
-              >
-                <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>
-              </button>
-            </div>
-
-            <div class="task-main">
-              <div class="task-topline">
-                <span class="course-chip">${escapeHtml(item.course)}</span>
-                ${typeChip}
-                ${renderStatusPill(level, item.meta.label)}
-              </div>
-              <h3 class="task-title">${escapeHtml(item.name)}</h3>
-              ${note}
+        const detailBlock = isOj
+          ? ''
+          : `
               <div class="task-detail" data-detail-id="${escapeHtml(item.id)}" data-open="${detailOpen ? '1' : '0'}">
                 <button
                   class="task-detail__toggle"
@@ -6019,18 +6398,65 @@
                 <div class="task-detail__body" data-detail-body ${detailOpen ? '' : 'hidden'}>${
                   detailOpen ? detailBodyHtml : ''
                 }</div>
+              </div>`;
+
+        const ojLink = isOj && item.oj.url
+          ? `<a class="task-link" href="${escapeHtml(item.oj.url)}" target="_blank" rel="noreferrer" title="在浏览器中打开这场实验">在 OJ 打开 <span aria-hidden="true">↗</span></a>`
+          : '';
+
+        // 满分字段偶尔是 0（老师没设分值），这时只显示得分，别写成「91 / 0」
+        const totalScore = Number(item.oj && item.oj.totalScore) || 0;
+        const scoreSuffix = totalScore ? `<small> / ${escapeHtml(String(totalScore))}</small>` : '';
+        const sideBlock = submitted
+          ? `
+              <span class="countdown-label">${hasScore ? '得分' : '状态'}</span>
+              ${
+                hasScore
+                  ? `<strong class="task-score">${escapeHtml(String(item.oj.score))}${scoreSuffix}</strong>`
+                  : `<strong class="countdown-value">${judged ? '已判完' : '判题中'}</strong>`
+              }`
+          : `
+              <span class="countdown-label">${level === 'overdue' ? '已超时' : '剩余时间'}</span>
+              <strong class="countdown-value">${escapeHtml(countdown)}</strong>`;
+
+        return `
+          <article class="task task--${level}" data-task-id="${escapeHtml(item.id)}" data-level="${level}" data-source="${isOj ? 'oj' : 'lms'}" style="--task-index:${index}">
+            <div class="task-checkcell">
+              <button
+                class="task-check"
+                type="button"
+                role="checkbox"
+                aria-checked="${submitted ? 'true' : 'false'}"
+                data-complete-id="${escapeHtml(item.id)}"
+                aria-label="${submitted ? `「${escapeHtml(item.name)}」已在 OJ 提交` : `标记「${escapeHtml(item.name)}」为已完成`}"
+                title="${submitted ? '已在 OJ 提交，无需再勾' : '标记为已完成（仅本应用）'}"
+                ${submitted ? 'disabled' : ''}
+              >
+                <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>
+              </button>
+            </div>
+
+            <div class="task-main">
+              <div class="task-topline">
+                ${ojChip}
+                <span class="course-chip">${escapeHtml(item.course)}</span>
+                ${typeChip}
+                ${renderStatusPill(level, item.meta.label)}
               </div>
+              <h3 class="task-title">${escapeHtml(item.name)}</h3>
+              ${note}
+              ${detailBlock}
               <div class="task-meta">
                 <span class="task-due" title="${escapeHtml(formatFullDate(due))}">
                   <svg class="icon" aria-hidden="true"><use href="#i-calendar"></use></svg>
                   <span>截止 <strong>${escapeHtml(dueText)}</strong></span>
                 </span>
+                ${ojLink}
               </div>
             </div>
 
             <div class="task-side">
-              <span class="countdown-label">${level === 'overdue' ? '已超时' : '剩余时间'}</span>
-              <strong class="countdown-value">${escapeHtml(countdown)}</strong>
+              ${sideBlock}
             </div>
           </article>
         `;
@@ -6038,15 +6464,106 @@
 
       function renderGroupHead(kind, title, meta) {
         const overdue = kind === 'overdue';
+        const submitted = kind === 'submitted';
+        const icon = overdue ? 'i-alert' : submitted ? 'i-check' : 'i-flag';
         return `
           <div class="group-head">
-            <span class="group-title${overdue ? ' group-title--overdue' : ''}">
-              <svg class="icon" aria-hidden="true"><use href="#${overdue ? 'i-alert' : 'i-flag'}"></use></svg>
+            <span class="group-title${overdue ? ' group-title--overdue' : ''}${submitted ? ' group-title--submitted' : ''}">
+              <svg class="icon" aria-hidden="true"><use href="#${icon}"></use></svg>
               ${escapeHtml(title)}
             </span>
             <span class="group-meta${overdue ? ' group-meta--overdue' : ''}">${escapeHtml(meta)}</span>
           </div>
         `;
+      }
+
+      function renderSourceBoard(kind, title, items, emptyText) {
+        const { overdue, upcoming, submitted } = splitGroups(items);
+        const pending = items.length - submitted.length;
+        const meta = [`${pending} 项待办`];
+        if (submitted.length) meta.push(`${submitted.length} 项已交`);
+        if (kind === 'oj' && state.oj && state.oj.configured && state.oj.online === false) {
+          meta.push('离线');
+        }
+
+        let body = '';
+
+        if (overdue.length) {
+          body += `
+            <section class="group group--overdue" aria-label="${escapeHtml(title)}已逾期">
+              ${renderGroupHead('overdue', '已逾期', `${overdue.length} 项 · 请优先处理`)}
+              <div class="task-list">
+                ${overdue.map((item, index) => renderTask(item, index)).join('')}
+              </div>
+            </section>
+          `;
+        }
+
+        if (upcoming.length) {
+          body += `
+            <section class="group" aria-label="${escapeHtml(title)}待完成">
+              ${renderGroupHead('upcoming', overdue.length ? '接下来' : '待完成', '按截止时间从近到远')}
+              <div class="task-list">
+                ${upcoming.map((item, index) => renderTask(item, index + overdue.length)).join('')}
+              </div>
+            </section>
+          `;
+        }
+
+        if (submitted.length) {
+          body += `
+            <section class="group group--submitted" aria-label="${escapeHtml(title)}已提交">
+              ${renderGroupHead('submitted', '已提交', `${submitted.length} 项 · 保留 7 天，可回看得分`)}
+              <div class="task-list">
+                ${submitted.map((item, index) => renderTask(item, index + overdue.length + upcoming.length)).join('')}
+              </div>
+            </section>
+          `;
+        }
+
+        if (!body) {
+          body = `<div class="source-empty">${emptyText}</div>`;
+        }
+
+        return `
+          <section class="source-board source-board--${kind}" data-source="${kind}" aria-label="${escapeHtml(title)}">
+            <div class="source-head">
+              <span class="source-title"><span class="source-dot" aria-hidden="true"></span>${escapeHtml(title)}</span>
+              <span class="source-meta">${escapeHtml(meta.join(' · '))}</span>
+            </div>
+            ${body}
+          </section>
+        `;
+      }
+
+      function ojEmptyHint() {
+        const oj = state.oj || {};
+        if (!oj.configured) {
+          return `
+            <span>还没登录 OJ，登录后这里会显示实验、得分与截止时间。</span>
+            <button class="source-action" type="button" data-open-oj-login>登录 OJ</button>
+          `;
+        }
+        if (oj.online === false) {
+          return `<span>当前连不上 OJ，${escapeHtml(oj.error || '请确认已连上校园网或 VPN')}。</span>`;
+        }
+        if (oj.error) {
+          return `
+            <span>${escapeHtml(oj.error)}</span>
+            <button class="source-action" type="button" data-open-oj-login>重新登录</button>
+          `;
+        }
+        return '<span>最近没有要做的实验。</span>';
+      }
+
+      function lmsEmptyHint() {
+        if (!isConnected()) {
+          return `
+            <span>还没登录深大优课，登录后这里会显示课程作业。</span>
+            <button class="source-action" type="button" data-open-auth>登录深大优课</button>
+          `;
+        }
+        return '<span>暂时没有待办作业。</span>';
       }
 
       function renderBoard(items) {
@@ -6098,58 +6615,68 @@
         if (!items.length) {
           els.taskList.setAttribute('aria-busy', 'false');
           setText(els.boardCount, '0 项');
+          // 只登了 OJ、畅课还差一次登录时，空列表也要留一个登录入口，
+          // 否则用户只看到「暂时没有作业」，找不到补登录的地方。
+          const needLmsLogin = state.authRequired;
           els.taskList.innerHTML = `
             <div class="state-card">
               <div class="state-icon" aria-hidden="true"><svg class="icon"><use href="#i-check"></use></svg></div>
               <h3>暂时没有待完成作业</h3>
-              <p>清单是空的。可以放心休息一下，或手动刷新看看有没有新任务。</p>
-              <button class="state-action" type="button" data-refresh>重新检查</button>
+              <p>${
+                needLmsLogin
+                  ? 'OJ 这边暂时没有要做的实验。深大优课还没登录，登录后这里会一并显示课程作业。'
+                  : '清单是空的。可以放心休息一下，或手动刷新看看有没有新任务。'
+              }</p>
+              ${
+                needLmsLogin
+                  ? '<button class="state-action" type="button" data-open-auth>登录深大优课</button>'
+                  : '<button class="state-action" type="button" data-refresh>重新检查</button>'
+              }
             </div>
           `;
           return;
         }
 
-        const { overdue, upcoming } = splitGroups(items);
-        let html = '';
+        const lmsItems = items.filter((item) => item.source !== 'OJ');
+        const ojItems = items.filter((item) => item.source === 'OJ');
+        const submittedTotal = items.filter((item) => item.meta.level === 'submitted').length;
 
-        if (overdue.length) {
-          html += `
-            <section class="group group--overdue" aria-label="已逾期作业">
-              ${renderGroupHead('overdue', '已逾期', `${overdue.length} 项 · 请优先处理`)}
-              <div class="task-list">
-                ${overdue.map((item, index) => renderTask(item, index)).join('')}
-              </div>
-            </section>
-          `;
-        }
+        // 两边都登录才左右并排；只有一边登录时，那一块用整幅宽度正常显示
+        const lmsReady = isConnected();
+        const ojReady = Boolean(state.oj && state.oj.configured);
+        const lmsBoard = renderSourceBoard('lms', '深大优课', lmsItems, lmsEmptyHint());
+        const ojBoard = renderSourceBoard('oj', 'OJ 判题', ojItems, ojEmptyHint());
 
-        if (upcoming.length) {
-          html += `
-            <section class="group" aria-label="待完成作业">
-              ${renderGroupHead('upcoming', overdue.length ? '接下来' : '待完成', '按截止时间从近到远')}
-              <div class="task-list">
-                ${upcoming.map((item, index) => renderTask(item, index + overdue.length)).join('')}
-              </div>
-            </section>
-          `;
+        let html;
+        if (lmsReady && ojReady) {
+          html = `<div class="source-split" data-layout="split">${lmsBoard}${ojBoard}</div>`;
+        } else {
+          html = `<div class="source-single" data-layout="single">${
+            lmsReady ? lmsBoard + ojBoard : ojBoard + lmsBoard
+          }</div>`;
         }
 
         html += `
           <div class="completion-note">
             <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>
-            <span>勾选完成只会从本应用移除，不会替你在深大优课中提交作业。</span>
+            <span>勾选完成只会从本应用移除，不会替你在深大优课中提交作业，也不会影响 OJ 的判题结果。</span>
           </div>
         `;
 
         els.taskList.innerHTML = html;
         els.taskList.setAttribute('aria-busy', 'false');
-        setText(els.boardCount, `${items.length} 项待办`);
+        const pending = items.length - submittedTotal;
+        setText(
+          els.boardCount,
+          `${pending} 项待办${submittedTotal ? ` · ${submittedTotal} 项已交` : ''}`
+        );
       }
 
       function renderAll() {
         updateTodayLabel();
         const items = getVisibleItems();
         updateAccountUI();
+        updateOjUI();
         updateSourceUI();
         updateRefreshUI();
         updateFloatingUI();
@@ -6405,6 +6932,206 @@
       }
 
       /* ==========================================================
+         OJ 判题系统（2.0.0）
+         ========================================================== */
+      function setOjError(message) {
+        if (!els.ojError) return;
+        const text = String(message || '');
+        els.ojError.hidden = !text;
+        els.ojError.textContent = text;
+      }
+
+      function setOjBusy(busy) {
+        state.ojLoginPending = Boolean(busy);
+        if (els.ojSubmit) els.ojSubmit.disabled = Boolean(busy);
+        if (els.ojCaptchaImage) els.ojCaptchaImage.style.opacity = busy ? '0.45' : '1';
+        setText(
+          els.ojSubmitLabel,
+          busy ? '正在登录…' : state.oj.configured ? '重新登录' : '登录并同步'
+        );
+      }
+
+      function updateOjUI() {
+        const oj = state.oj || {};
+        const configured = Boolean(oj.configured);
+        const offline = configured && oj.online === false;
+        const failed = configured && Boolean(oj.error) && !offline;
+        let mode = 'off';
+        if (configured) mode = offline ? 'offline' : failed ? 'error' : 'on';
+
+        if (els.ojBtn) {
+          els.ojBtn.dataset.state = mode;
+          const label = !configured
+            ? 'OJ 未连接，点击登录'
+            : offline
+              ? `OJ 当前离线（最后同步 ${oj.lastSync || '未知'}）`
+              : failed
+                ? `OJ 需要重新登录：${oj.error}`
+                : `OJ 已连接，账号 ${oj.account || ''}`;
+          els.ojBtn.setAttribute('aria-label', label);
+          els.ojBtn.title = label;
+        }
+        setText(els.ojBtnLabel, offline ? 'OJ 离线' : 'OJ');
+      }
+
+      function updateOjDialogContent() {
+        const oj = state.oj || {};
+        const configured = Boolean(oj.configured);
+        const base = String(oj.base || 'http://172.31.221.62').replace(/\/+$/, '');
+
+        if (els.ojBase) setText(els.ojBase, base);
+        if (els.ojBaseLink) els.ojBaseLink.href = `${base}/`;
+        if (els.ojLogout) els.ojLogout.hidden = !configured;
+
+        if (els.ojStatus) {
+          els.ojStatus.hidden = !configured;
+          if (configured) {
+            const parts = [`已登录 ${oj.account || ''}`];
+            if (oj.lastSync) {
+              const when = new Date(oj.lastSync);
+              if (!Number.isNaN(when.getTime())) parts.push(`最近同步 ${formatUpdatedTime(when)}`);
+            }
+            if (oj.online === false) parts.push('当前网络连不上 OJ');
+            else if (oj.error) parts.push(oj.error);
+            els.ojStatus.innerHTML = `<span>${escapeHtml(parts.filter(Boolean).join(' · '))}</span>`;
+          }
+        }
+
+        if (configured && !els.ojUsername.value) {
+          els.ojUsername.value = oj.account || '';
+        }
+        setText(
+          els.ojSubmitLabel,
+          state.ojLoginPending ? '正在登录…' : configured ? '重新登录' : '登录并同步'
+        );
+      }
+
+      async function refreshOjCaptcha() {
+        if (IS_MOCK) return;
+        try {
+          const result = await requestJSON('/api/oj/captcha', {
+            method: 'POST',
+            body: JSON.stringify({})
+          });
+          const captcha = (result && result.captcha) || {};
+          state.ojCaptcha = captcha.key ? captcha : null;
+          if (els.ojCaptchaImage) {
+            if (captcha.image) {
+              els.ojCaptchaImage.src = captcha.image;
+            } else {
+              els.ojCaptchaImage.removeAttribute('src');
+            }
+          }
+          if (els.ojCaptcha) els.ojCaptcha.value = '';
+        } catch (error) {
+          state.ojCaptcha = null;
+          if (els.ojCaptchaImage) els.ojCaptchaImage.removeAttribute('src');
+          setOjError(error.message || '验证码加载失败，点图片重试。');
+        }
+      }
+
+      async function openOjDialog() {
+        if (IS_MOCK) {
+          showToast('当前是演示模式。OJ 需要本地服务才能连接。');
+          return;
+        }
+        if (els.ojDialog.open) return;
+        setOjError('');
+        updateOjDialogContent();
+        els.ojDialog.showModal();
+        els.ojUsername.focus();
+        await refreshOjCaptcha();
+      }
+
+      function closeOjDialog() {
+        if (els.ojDialog.open) els.ojDialog.close();
+      }
+
+      async function handleOjSubmit(event) {
+        event.preventDefault();
+        if (state.ojLoginPending) return;
+
+        const username = els.ojUsername.value.trim();
+        const password = els.ojPassword.value;
+        const captcha = els.ojCaptcha.value.trim();
+        const captchaKey = state.ojCaptcha && state.ojCaptcha.key;
+
+        if (!username) {
+          setOjError('请输入 OJ 账号。');
+          els.ojUsername.focus();
+          return;
+        }
+        if (!password) {
+          setOjError('请输入 OJ 密码。');
+          els.ojPassword.focus();
+          return;
+        }
+        if (!captcha) {
+          setOjError('请输入图片中的验证码。');
+          els.ojCaptcha.focus();
+          return;
+        }
+        if (!captchaKey) {
+          setOjError('验证码已过期，点图片换一张。');
+          refreshOjCaptcha();
+          return;
+        }
+
+        setOjError('');
+        setOjBusy(true);
+
+        try {
+          const result = await requestJSON('/api/oj/login', {
+            method: 'POST',
+            body: JSON.stringify({ username, password, captcha, captchaKey })
+          });
+          state.oj = result.oj || { ...state.oj, configured: true };
+          els.ojPassword.value = '';
+          updateOjUI();
+          updateOjDialogContent();
+          closeOjDialog();
+          const count = Number(result.count || 0);
+          showToast(count ? `OJ 已连接，同步到 ${count} 项实验` : 'OJ 已连接');
+          await loadAssignments({ manual: true, force: true });
+        } catch (error) {
+          if (error.code === 'OJ_CAPTCHA_WRONG') {
+            setOjError(error.message || '验证码不对，换一张再试。');
+            await refreshOjCaptcha();
+            els.ojCaptcha.focus();
+          } else {
+            setOjError(error.message || 'OJ 登录失败，请重试。');
+            if (error.payload && error.payload.oj) {
+              state.oj = error.payload.oj;
+              updateOjUI();
+            }
+          }
+        } finally {
+          setOjBusy(false);
+        }
+      }
+
+      async function handleOjLogout() {
+        if (!window.confirm('退出并清除本机保存的 OJ 会话？之后需要重新登录。')) {
+          return;
+        }
+        try {
+          const result = await requestJSON('/api/oj/logout', {
+            method: 'POST',
+            body: JSON.stringify({})
+          });
+          state.oj = result.oj || { configured: false, account: '', online: null, lastSync: '', error: '' };
+          updateOjUI();
+          updateOjDialogContent();
+          setOjError('');
+          await refreshOjCaptcha();
+          showToast('已退出 OJ，本机会话已清除');
+          await loadAssignments({ manual: true, force: true });
+        } catch (error) {
+          setOjError(error.message || '退出失败，请稍后重试。');
+        }
+      }
+
+      /* ==========================================================
          取数 / 刷新 / 完成
          ========================================================== */
       async function loadAssignments({ manual = false, initial = false, force = false, fromPeer = false } = {}) {
@@ -6425,11 +7152,28 @@
             if (!liveIds.has(id)) state.openDetails.delete(id);
           });
           state.hasLoaded = true;
-          state.authRequired = false;
-          state.auth.code = '';
-          state.auth.message = '';
-          state.auth.captchaType = '';
-          state.auth.captchaImage = '';
+          // 只登录了 OJ：服务端仍返回 200（OJ 那部分照常显示），
+          // 用 lmsAuth 告诉这边「畅课还差一次登录」，不要整页糊成登录卡。
+          if (payload.lmsAuth) {
+            state.authRequired = true;
+            state.authDegraded = true;
+            state.auth.code = payload.lmsAuth.code || 'AUTH_REQUIRED';
+            state.auth.message = payload.lmsAuth.message || '';
+            state.auth.captchaType = payload.lmsAuth.captchaType || '';
+            state.auth.captchaImage = payload.lmsAuth.captchaImage || '';
+            authProblem = {
+              code: state.auth.code,
+              message: state.auth.message,
+              payload: payload.lmsAuth
+            };
+          } else {
+            state.authRequired = false;
+            state.authDegraded = false;
+            state.auth.code = '';
+            state.auth.message = '';
+            state.auth.captchaType = '';
+            state.auth.captchaImage = '';
+          }
           state.auth.status = payload.status || state.auth.status;
           if (payload.user) state.auth.user = payload.user;
           state.lastUpdated = payload.updatedAt || new Date();
@@ -6476,6 +7220,7 @@
 
         const shouldPrompt =
           authProblem &&
+          !state.authDegraded &&
           !fromPeer &&
           (initial || manual || !state.initialAuthPrompted) &&
           !els.authDialog.open;
@@ -7174,6 +7919,30 @@
       els.authForm.addEventListener('submit', handleLoginSubmit);
       els.authLogout.addEventListener('click', handleLogout);
 
+      // OJ（2.0.0）
+      if (els.ojBtn) els.ojBtn.addEventListener('click', openOjDialog);
+      if (els.ojClose) els.ojClose.addEventListener('click', closeOjDialog);
+      if (els.ojDialog) {
+        els.ojDialog.addEventListener('close', () => {
+          els.ojPassword.value = '';
+          setOjError('');
+        });
+        els.ojDialog.addEventListener('click', (event) => {
+          if (event.target === els.ojDialog) closeOjDialog();
+        });
+      }
+      if (els.ojForm) els.ojForm.addEventListener('submit', handleOjSubmit);
+      if (els.ojLogout) els.ojLogout.addEventListener('click', handleOjLogout);
+      if (els.ojCaptchaImage) {
+        els.ojCaptchaImage.addEventListener('click', refreshOjCaptcha);
+        els.ojCaptchaImage.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            refreshOjCaptcha();
+          }
+        });
+      }
+
       els.passwordToggle.addEventListener('click', () => {
         const showing = els.authPassword.type === 'text';
         els.authPassword.type = showing ? 'password' : 'text';
@@ -7240,6 +8009,12 @@
       }
 
       els.taskList.addEventListener('click', (event) => {
+        const ojLoginButton = event.target.closest('[data-open-oj-login]');
+        if (ojLoginButton) {
+          openOjDialog();
+          return;
+        }
+
         const toggleButton = event.target.closest('[data-toggle-detail]');
         if (toggleButton) {
           const card = toggleButton.closest('.task');

@@ -61,10 +61,19 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 import themes as theme_mod
+from oj_client import (
+    DEFAULT_BASE as OJ_DEFAULT_BASE,
+    OjAuthRequired,
+    OjCaptchaWrong,
+    OjClient,
+    OjError,
+    OjLoginFailed,
+    OjUnreachable,
+)
 
 
 APP_NAME = "HomeworkDesk"
-APP_VERSION = "1.5.3"
+APP_VERSION = "2.0.0"
 APP_DIR = Path(__file__).resolve().parent
 
 
@@ -590,6 +599,7 @@ class DataStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self.credentials_path = root / "credentials.dat"
         self.session_path = root / "session.dat"
+        self.oj_session_path = root / "oj_session.dat"
         self.prefs_path = root / "prefs.json"
         self.state_path = root / "state.json"
         self.themes_path = root / "themes.json"
@@ -667,6 +677,30 @@ class DataStore:
             self.session_path.unlink(missing_ok=True)
         except Exception as exc:
             LOG.warning("删除会话失败：%s", exc)
+
+    # ------------------------------------------------------------------ OJ 会话
+    def load_oj_session(self) -> Optional[dict[str, Any]]:
+        if not self.oj_session_path.exists():
+            return None
+        try:
+            raw = dpapi_unprotect(self.oj_session_path.read_bytes())
+            data = json.loads(raw.decode("utf-8"))
+            if not isinstance(data, dict) or not data.get("sessionid"):
+                return None
+            return data
+        except Exception as exc:
+            LOG.warning("读取 OJ 会话失败：%s", exc)
+            return None
+
+    def save_oj_session(self, record: dict[str, Any]) -> None:
+        payload = json.dumps(record, ensure_ascii=False).encode("utf-8")
+        self._atomic_write(self.oj_session_path, dpapi_protect(payload))
+
+    def delete_oj_session(self) -> None:
+        try:
+            self.oj_session_path.unlink(missing_ok=True)
+        except Exception as exc:
+            LOG.warning("删除 OJ 会话失败：%s", exc)
 
     def load_state(self) -> dict[str, Any]:
         data = self._read_json(self.state_path, {})
@@ -2201,6 +2235,7 @@ class AppContext:
         self.data_dir = data_dir
         self.store = DataStore(data_dir)
         self.auth = SzuAuth(self.store)
+        self.oj = OjClient(self.store)
         self.started_at = now_iso()
 
         self._theme_lock = threading.Lock()
@@ -2231,9 +2266,54 @@ class AppContext:
         return self.auth.restore_completion(homework_id)
 
     def homework(self, force: bool = False) -> dict[str, Any]:
-        payload = self.auth.get_todos(force=force)
+        """两个来源合并成一份待办。
+
+        两个系统各自独立登录：只登了 OJ、还没登畅课时，不把整页糊成一张登录卡，
+        而是先返回 OJ 那部分，再用 ``lmsAuth`` 告诉前端「畅课还差一次登录」。
+        只有两边都拿不到东西（畅课未登录且 OJ 也没配过）才把登录异常抛给路由层。
+        """
         completed = self.store.completed_ids()
-        assignments = normalize_todos(payload, completed)
+        assignments: list[dict[str, Any]] = []
+        lms_auth: Optional[dict[str, Any]] = None
+        lms_error: Optional[Exception] = None
+
+        try:
+            payload = self.auth.get_todos(force=force)
+            assignments = normalize_todos(payload, completed)
+        except CaptchaRequired as exc:
+            lms_error = exc
+            lms_auth = {
+                "code": "CAPTCHA_REQUIRED",
+                "message": exc.message,
+                "captchaType": exc.captcha_type,
+                "captchaImage": exc.image_data_url,
+            }
+        except AuthFailed as exc:
+            lms_error = exc
+            lms_auth = {"code": "AUTH_FAILED", "message": exc.message}
+        except AuthRequired as exc:
+            lms_error = exc
+            lms_auth = {"code": "AUTH_REQUIRED", "message": exc.message}
+
+        # OJ 是第二个作业源。它挂了只降级显示，绝不影响畅课那份清单。
+        try:
+            for item in self.oj.todos(force=force):
+                if item["id"] not in completed:
+                    assignments.append(item)
+        except OjAuthRequired:
+            LOG.debug("OJ 未登录或登录已过期，跳过。")
+        except OjError as exc:
+            LOG.warning("读取 OJ 失败：%s", exc.message)
+        except Exception as exc:  # 兜底，别把整个看板拖下水
+            LOG.exception("读取 OJ 数据时出现未预期的错误")
+            self.oj.last_error = f"OJ 数据读取失败：{exc}"
+
+        # 畅课失败 + OJ 也没配过：没有任何内容可展示，维持原来的 401/428，
+        # 让前端弹登录框；否则降级返回 OJ 那部分。
+        if lms_error is not None and not self.oj.status()["configured"]:
+            raise lms_error
+
+        assignments.sort(key=lambda item: item["dueDate"])
         return {
             "assignments": assignments,
             "updatedAt": now_iso(),
@@ -2243,7 +2323,24 @@ class AppContext:
             "source": "深大优课",
             "completionMode": "local",
             "count": len(assignments),
+            "oj": self.oj.status(),
+            "lmsAuth": lms_auth,
         }
+
+    # ------------------------------------------------------------------ OJ（2.0.0）
+    def oj_status(self) -> dict[str, Any]:
+        return self.oj.status()
+
+    def oj_captcha(self) -> dict[str, Any]:
+        return self.oj.new_captcha()
+
+    def oj_login(
+        self, username: str, password: str, captcha: str, captcha_key: str
+    ) -> dict[str, Any]:
+        return self.oj.login(username, password, captcha, captcha_key)
+
+    def oj_logout(self) -> None:
+        self.oj.logout()
 
     # ------------------------------------------------------------------ 作业详情 / 附件
     DETAIL_CACHE_TTL = 600
@@ -2712,7 +2809,12 @@ class ApiHandler(BaseHTTPRequestHandler):
             payload = self.context.auth.status()
             payload["source"] = "深大优课"
             payload["completionMode"] = "local"
+            payload["oj"] = self.context.oj_status()
             self._send_json(200, payload)
+            return
+
+        if path == "/api/oj/status":
+            self._send_json(200, {"ok": True, "oj": self.context.oj_status()})
             return
 
         if path == "/api/homework":
@@ -2942,6 +3044,103 @@ class ApiHandler(BaseHTTPRequestHandler):
             forget = bool(data.get("forget", False))
             self.context.auth.logout(forget=forget)
             self._send_json(200, {"ok": True, "status": self.context.auth.status()})
+            return
+
+        # ------------------------------------------------------------ OJ（2.0.0）
+        if path == "/api/oj/captcha":
+            try:
+                self._send_json(200, {"ok": True, "captcha": self.context.oj_captcha()})
+            except OjUnreachable as exc:
+                self._send_json(
+                    502, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
+                )
+            except OjError as exc:
+                self._send_json(
+                    500, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
+                )
+            except Exception as exc:
+                LOG.exception("获取 OJ 验证码失败")
+                self._send_json(500, {"code": "SERVER_ERROR", "message": f"获取验证码失败：{exc}"})
+            return
+
+        if path == "/api/oj/login":
+            try:
+                data = self._read_json_body()
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+
+            username = str(data.get("username") or "").strip()
+            password = str(data.get("password") or "")
+            captcha = str(data.get("captcha") or "").strip()
+            captcha_key = str(data.get("captchaKey") or "").strip()
+
+            if not username or not password or not captcha or not captcha_key:
+                self._send_json(
+                    400, {"code": "VALIDATION_ERROR", "message": "学号、密码、验证码都要填。"}
+                )
+                return
+            if len(username) > 100 or len(password) > 256 or len(captcha) > 16:
+                self._send_json(
+                    400, {"code": "VALIDATION_ERROR", "message": "输入内容长度不正确。"}
+                )
+                return
+
+            try:
+                user = self.context.oj_login(username, password, captcha, captcha_key)
+            except OjCaptchaWrong as exc:
+                self._send_json(
+                    400, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
+                )
+                return
+            except OjLoginFailed as exc:
+                self._send_json(
+                    401, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
+                )
+                return
+            except OjUnreachable as exc:
+                self._send_json(
+                    502, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
+                )
+                return
+            except OjError as exc:
+                self._send_json(
+                    500, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
+                )
+                return
+            except Exception as exc:
+                LOG.exception("OJ 登录异常")
+                self._send_json(500, {"code": "SERVER_ERROR", "message": f"OJ 登录出错：{exc}"})
+                return
+
+            count = 0
+            try:
+                count = sum(
+                    1
+                    for item in self.context.oj.todos(force=True)
+                    if item.get("source") == "OJ"
+                )
+            except OjError:
+                pass
+            self._send_json(
+                200,
+                {
+                    "ok": True,
+                    "message": "OJ 登录成功。",
+                    "user": user,
+                    "count": count,
+                    "oj": self.context.oj_status(),
+                },
+            )
+            return
+
+        if path == "/api/oj/logout":
+            try:
+                self._read_json_body()
+            except ValueError:
+                pass
+            self.context.oj_logout()
+            self._send_json(200, {"ok": True, "oj": self.context.oj_status()})
             return
 
         if path == "/api/themes/active":

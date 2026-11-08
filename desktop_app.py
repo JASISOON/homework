@@ -1389,6 +1389,9 @@ class DesktopApplication:
         for item in payload.get("assignments") or []:
             if item.get("completed"):
                 continue
+            # OJ 上已经交掉的实验不算待办：它只是留在列表里 7 天供回看得分
+            if (item.get("oj") or {}).get("submitted"):
+                continue
             total += 1
             try:
                 due = datetime.fromisoformat(str(item.get("dueDate")))

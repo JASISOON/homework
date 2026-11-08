@@ -23,10 +23,9 @@ htmlcov/
 
 # ====================================================== 打包与安装程序产物
 # PyInstaller：build/ 是它的工作目录，dist/ 是默认输出（含手动 mv 进去的 dist/_old/）
-build/
-dist/
-dist_build/
-dist_v*/
+# 试新布局时常用 --distpath dist_split 这类临时目录，这里一并挡掉
+build*/
+dist*/
 *.manifest
 *.spec.bak
 
@@ -35,7 +34,6 @@ dist_v*/
 # release/ 下只跟踪各版本的 .exe 和 SHA256SUMS.txt；
 # 在里面解压/试跑出来的子目录（如 release/作业备忘-绿色版-1.5.1/，几百个文件）一律不入库
 release/*/
-dist_installer/
 *.iss.bak
 
 # 一次性脚本（发 Release、算哈希之类，跑完即删；留在这儿防止手滑提交）
@@ -50,6 +48,7 @@ logs/
 ball-state.json
 credentials.dat
 session.dat
+oj_session.dat
 prefs.json
 themes.json
 state.json
