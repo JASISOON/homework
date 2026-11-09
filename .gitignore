@@ -6,7 +6,7 @@ __pycache__/
 *.pyd
 *.so
 
-# 虚拟环境（本项目实际用的是 %TEMP%\hd-venv，这里防手滑）
+# 虚拟环境（本项目实际用的是 %TEMP%\hd-build-venv，这里防手滑）
 .venv/
 .venv*/
 venv/

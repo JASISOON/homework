@@ -62,39 +62,42 @@ except ImportError as exc:  # pragma: no cover
 
 import themes as theme_mod
 from oj_client import (
-    DEFAULT_BASE as OJ_DEFAULT_BASE,
-    OjAuthRequired,
     OjCaptchaWrong,
-    OjClient,
     OjError,
+    OjHub,
     OjLoginFailed,
     OjUnreachable,
 )
 
 
 APP_NAME = "HomeworkDesk"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.3"
 APP_DIR = Path(__file__).resolve().parent
 
 
-def resource_path(filename: str) -> Path:
-    """兼容源码运行与 PyInstaller 打包后的资源路径。"""
+def resource_path(*parts: str) -> Path:
+    """兼容源码运行与 PyInstaller 打包后的资源路径。
+
+    源码布局下资源在仓库根的 ``web/``、``assets/`` 里，而本文件位于 ``src/``，
+    所以要往上跳一层；打包后资源按 spec 里的同名目录落到 ``_MEIPASS``。
+    """
+    relative = Path(*parts)
     candidates = []
     if getattr(sys, "frozen", False):
         mei = getattr(sys, "_MEIPASS", None)
         if mei:
-            candidates.append(Path(mei) / filename)
-        candidates.append(Path(sys.executable).resolve().parent / filename)
-    candidates.append(APP_DIR / filename)
+            candidates.append(Path(mei) / relative)
+        candidates.append(Path(sys.executable).resolve().parent / relative)
+    candidates.append(APP_DIR.parent / relative)
     for candidate in candidates:
         if candidate.exists():
             return candidate
     return candidates[-1]
 
 
-APP_HTML = resource_path("homework-reminder.html")
-BALL_HTML = resource_path("ball.html")
-ICON_PATH = resource_path("homework-desk.ico")
+APP_HTML = resource_path("web", "homework-reminder.html")
+BALL_HTML = resource_path("web", "ball.html")
+ICON_PATH = resource_path("assets", "homework-desk.ico")
 DEFAULT_PORT = 8765
 HOST = "127.0.0.1"
 
@@ -679,22 +682,59 @@ class DataStore:
             LOG.warning("删除会话失败：%s", exc)
 
     # ------------------------------------------------------------------ OJ 会话
-    def load_oj_session(self) -> Optional[dict[str, Any]]:
+    # 2.1.0 起一个用户可能同时挂着多个 OJ 站点，文件里存 {"sites": {base: record}}。
+    # 旧版本写的是扁平的单条 record，读的时候自动升级，不丢已有登录状态。
+    def load_oj_sessions(self) -> dict[str, dict[str, Any]]:
         if not self.oj_session_path.exists():
-            return None
+            return {}
         try:
             raw = dpapi_unprotect(self.oj_session_path.read_bytes())
             data = json.loads(raw.decode("utf-8"))
-            if not isinstance(data, dict) or not data.get("sessionid"):
-                return None
-            return data
         except Exception as exc:
             LOG.warning("读取 OJ 会话失败：%s", exc)
-            return None
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        sites = data.get("sites")
+        if isinstance(sites, dict):
+            return {
+                str(base).rstrip("/"): record
+                for base, record in sites.items()
+                if isinstance(record, dict) and record.get("sessionid")
+            }
+        # 旧格式：单条 record
+        if data.get("sessionid"):
+            base = str(data.get("base") or "").rstrip("/")
+            return {base: data} if base else {}
+        return {}
+
+    def save_oj_sessions(self, sessions: dict[str, dict[str, Any]]) -> None:
+        payload = json.dumps({"sites": sessions}, ensure_ascii=False).encode("utf-8")
+        self._atomic_write(self.oj_session_path, dpapi_protect(payload))
+
+    def delete_oj_session_for(self, base: str) -> None:
+        """只清掉某一个站点的会话，其余站点保持登录。"""
+        key = str(base or "").rstrip("/")
+        sessions = self.load_oj_sessions()
+        if key in sessions:
+            sessions.pop(key, None)
+            if sessions:
+                self.save_oj_sessions(sessions)
+            else:
+                self.delete_oj_session()
+        elif not key:
+            self.delete_oj_session()
+
+    def load_oj_session(self) -> Optional[dict[str, Any]]:
+        for record in self.load_oj_sessions().values():
+            return record
+        return None
 
     def save_oj_session(self, record: dict[str, Any]) -> None:
-        payload = json.dumps(record, ensure_ascii=False).encode("utf-8")
-        self._atomic_write(self.oj_session_path, dpapi_protect(payload))
+        base = str(record.get("base") or "").rstrip("/")
+        sessions = self.load_oj_sessions()
+        sessions[base] = record
+        self.save_oj_sessions(sessions)
 
     def delete_oj_session(self) -> None:
         try:
@@ -2235,7 +2275,7 @@ class AppContext:
         self.data_dir = data_dir
         self.store = DataStore(data_dir)
         self.auth = SzuAuth(self.store)
-        self.oj = OjClient(self.store)
+        self.oj = OjHub(self.store)
         self.started_at = now_iso()
 
         self._theme_lock = threading.Lock()
@@ -2295,18 +2335,14 @@ class AppContext:
             lms_error = exc
             lms_auth = {"code": "AUTH_REQUIRED", "message": exc.message}
 
-        # OJ 是第二个作业源。它挂了只降级显示，绝不影响畅课那份清单。
+        # OJ 是第二个作业源，而且可能同时挂着好几个站点。
+        # Hub 内部已经按站点降级了，这里只是最后一道保险。
         try:
             for item in self.oj.todos(force=force):
                 if item["id"] not in completed:
                     assignments.append(item)
-        except OjAuthRequired:
-            LOG.debug("OJ 未登录或登录已过期，跳过。")
-        except OjError as exc:
-            LOG.warning("读取 OJ 失败：%s", exc.message)
-        except Exception as exc:  # 兜底，别把整个看板拖下水
+        except Exception:  # 兜底，别把整个看板拖下水
             LOG.exception("读取 OJ 数据时出现未预期的错误")
-            self.oj.last_error = f"OJ 数据读取失败：{exc}"
 
         # 畅课失败 + OJ 也没配过：没有任何内容可展示，维持原来的 401/428，
         # 让前端弹登录框；否则降级返回 OJ 那部分。
@@ -2327,20 +2363,30 @@ class AppContext:
             "lmsAuth": lms_auth,
         }
 
-    # ------------------------------------------------------------------ OJ（2.0.0）
+    # -------------------------------------------------------------- OJ（2.0.0 / 2.1.0）
     def oj_status(self) -> dict[str, Any]:
         return self.oj.status()
 
-    def oj_captcha(self) -> dict[str, Any]:
-        return self.oj.new_captcha()
+    def oj_captcha(self, base: str = "") -> dict[str, Any]:
+        return self.oj.new_captcha(base or None)
 
     def oj_login(
-        self, username: str, password: str, captcha: str, captcha_key: str
+        self, username: str, password: str, captcha: str, captcha_key: str, base: str = ""
     ) -> dict[str, Any]:
-        return self.oj.login(username, password, captcha, captcha_key)
+        return self.oj.login(username, password, captcha, captcha_key, base or None)
 
-    def oj_logout(self) -> None:
-        self.oj.logout()
+    def oj_logout(self, base: str = "") -> None:
+        self.oj.logout(base or None)
+
+    def oj_add_site(self, base: str, label: str = "") -> dict[str, Any]:
+        """添加一个 OJ 站点（每学期 OJ 会换一台机器，也可能同时挂几个）。"""
+        return self.oj.add_site(base, label)
+
+    def oj_remove_site(self, base: str) -> dict[str, Any]:
+        return self.oj.remove_site(base)
+
+    def oj_rename_site(self, base: str, label: str) -> dict[str, Any]:
+        return self.oj.rename_site(base, label)
 
     # ------------------------------------------------------------------ 作业详情 / 附件
     DETAIL_CACHE_TTL = 600
@@ -3047,9 +3093,109 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
 
         # ------------------------------------------------------------ OJ（2.0.0）
+        # 添加一个 OJ 站点（2.1.0：支持同时挂多个）。/api/oj/base 是旧名字，保留兼容。
+        if path in ("/api/oj/sites/add", "/api/oj/base"):
+            try:
+                data = self._read_json_body()
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+
+            try:
+                result = self.context.oj_add_site(
+                    str(data.get("base") or ""), str(data.get("label") or "")
+                )
+            except OjUnreachable as exc:
+                self._send_json(
+                    502, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
+                )
+                return
+            except OjError as exc:
+                self._send_json(
+                    400, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
+                )
+                return
+            except Exception as exc:
+                LOG.exception("添加 OJ 站点失败")
+                self._send_json(
+                    500, {"code": "SERVER_ERROR", "message": f"添加 OJ 站点失败：{exc}"}
+                )
+                return
+
+            self._send_json(
+                200,
+                {
+                    "ok": True,
+                    "base": result["base"],
+                    "added": result["added"],
+                    "changed": result["changed"],
+                    "captcha": result["captcha"],
+                    "oj": self.context.oj_status(),
+                },
+            )
+            return
+
+        if path == "/api/oj/sites/remove":
+            try:
+                data = self._read_json_body()
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+            try:
+                result = self.context.oj_remove_site(str(data.get("base") or ""))
+            except OjError as exc:
+                self._send_json(
+                    400, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
+                )
+                return
+            except Exception as exc:
+                LOG.exception("移除 OJ 站点失败")
+                self._send_json(
+                    500, {"code": "SERVER_ERROR", "message": f"移除 OJ 站点失败：{exc}"}
+                )
+                return
+            self._send_json(
+                200,
+                {"ok": True, "base": result["base"], "oj": self.context.oj_status()},
+            )
+            return
+
+        if path == "/api/oj/sites/rename":
+            try:
+                data = self._read_json_body()
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+            try:
+                result = self.context.oj_rename_site(
+                    str(data.get("base") or ""), str(data.get("label") or "")
+                )
+            except OjError as exc:
+                self._send_json(
+                    400, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
+                )
+                return
+            except Exception as exc:
+                LOG.exception("重命名 OJ 站点失败")
+                self._send_json(
+                    500, {"code": "SERVER_ERROR", "message": f"重命名 OJ 站点失败：{exc}"}
+                )
+                return
+            self._send_json(
+                200, {"ok": True, "base": result["base"], "oj": self.context.oj_status()}
+            )
+            return
+
         if path == "/api/oj/captcha":
             try:
-                self._send_json(200, {"ok": True, "captcha": self.context.oj_captcha()})
+                data = self._read_json_body()
+            except ValueError:
+                data = {}
+            try:
+                self._send_json(
+                    200,
+                    {"ok": True, "captcha": self.context.oj_captcha(str(data.get("base") or ""))},
+                )
             except OjUnreachable as exc:
                 self._send_json(
                     502, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
@@ -3074,6 +3220,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             password = str(data.get("password") or "")
             captcha = str(data.get("captcha") or "").strip()
             captcha_key = str(data.get("captchaKey") or "").strip()
+            site_base = str(data.get("base") or "").strip()
 
             if not username or not password or not captcha or not captcha_key:
                 self._send_json(
@@ -3087,7 +3234,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
 
             try:
-                user = self.context.oj_login(username, password, captcha, captcha_key)
+                user = self.context.oj_login(
+                    username, password, captcha, captcha_key, site_base
+                )
             except OjCaptchaWrong as exc:
                 self._send_json(
                     400, {"code": exc.code, "message": exc.message, "oj": self.context.oj_status()}
@@ -3113,12 +3262,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(500, {"code": "SERVER_ERROR", "message": f"OJ 登录出错：{exc}"})
                 return
 
+            # 只数刚登录的这个站点，别把其他学期的实验也算进来
             count = 0
             try:
+                target = site_base.rstrip("/")
+                if not target:
+                    target = str(self.context.oj_status().get("base") or "").rstrip("/")
                 count = sum(
                     1
                     for item in self.context.oj.todos(force=True)
-                    if item.get("source") == "OJ"
+                    if str((item.get("oj") or {}).get("siteBase") or "").rstrip("/") == target
                 )
             except OjError:
                 pass
@@ -3128,6 +3281,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "message": "OJ 登录成功。",
                     "user": user,
+                    "base": site_base,
                     "count": count,
                     "oj": self.context.oj_status(),
                 },
@@ -3136,10 +3290,10 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         if path == "/api/oj/logout":
             try:
-                self._read_json_body()
+                data = self._read_json_body()
             except ValueError:
-                pass
-            self.context.oj_logout()
+                data = {}
+            self.context.oj_logout(str(data.get("base") or ""))
             self._send_json(200, {"ok": True, "oj": self.context.oj_status()})
             return
 

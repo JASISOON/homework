@@ -233,8 +233,8 @@
     .scroll-thumb {
       position: absolute;
       top: 0;
-      /* 右侧 4px 宽是缩放热区，滑块内缩 4px 才不会和它抢鼠标。 */
-      right: 4px;
+      /* 最外侧 6px 归系统的缩放热区（WM_NCHITTEST），滑块整条避开它。 */
+      right: 6px;
       width: 6px;
       min-height: 36px;
       border-radius: 999px;
@@ -249,7 +249,7 @@
     }
 
     .scroll-thumb:hover {
-      right: 3px;
+      right: 5px;
       width: 8px;
       background: rgba(var(--green-rgb), 0.62);
     }
@@ -260,7 +260,8 @@
       right: 0;
       bottom: 0;
       z-index: 64;
-      width: 14px;
+      /* 外面 6px 是系统缩放宽度，这里多留 2px 补偿。 */
+      width: 16px;
     }
 
     /* ============================================================
@@ -544,6 +545,8 @@
       display: block;
     }
 
+    /* 四边/四角缩放热区：客户区被 WebView2 子窗口盖住，主窗口的 WM_NCHITTEST
+       收不到鼠标，所以缩放必须在页面里放透明把手，交给 window_resize()。 */
     .win-resize-layer {
       position: fixed;
       inset: 0;
@@ -3254,6 +3257,32 @@
       white-space: nowrap;
     }
 
+    /* 多站点（2.1.0）：同一课程可能挂好几台 OJ，徽标按站点换色，一眼看出这条来自哪台 */
+    .oj-chip--1 {
+      border-color: var(--orange-line);
+      color: var(--orange-strong);
+      background: var(--orange-soft);
+    }
+
+    .oj-chip--2 {
+      border-color: var(--line-strong);
+      color: var(--ink-soft);
+      background: var(--surface-tint);
+    }
+
+    .oj-chip__site {
+      max-width: 8.5em;
+      margin-left: 4px;
+      padding-left: 5px;
+      border-left: 1px solid currentColor;
+      opacity: 0.72;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .task--submitted {
       --accent: var(--green-line);
       border-color: var(--green-line);
@@ -3653,7 +3682,103 @@
       margin-top: 15px;
     }
 
+    /* 多站点（2.1.0）：登录框顶部的站点切换 */
+    .oj-sites {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .oj-site {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 999px;
+      color: var(--muted-strong);
+      background: var(--surface-soft);
+      font-size: 10.5px;
+      font-weight: 650;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+    }
+
+    .oj-site:hover {
+      color: var(--ink);
+      border-color: var(--line-strong);
+    }
+
+    .oj-site[aria-selected='true'] {
+      color: var(--ink);
+      border-color: var(--green-line);
+      background: var(--green-soft);
+      box-shadow: inset 0 0 0 1px rgba(var(--green-rgb), 0.12);
+    }
+
+    .oj-site__dot {
+      flex: 0 0 auto;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--line-strong);
+    }
+
+    .oj-site[data-state='on'] .oj-site__dot {
+      background: var(--green);
+    }
+
+    .oj-site[data-state='alert'] .oj-site__dot {
+      background: var(--orange);
+    }
+
+    .oj-site__meta {
+      color: var(--muted-weak);
+      font-size: 9px;
+      font-weight: 600;
+    }
+
+    .oj-site-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .oj-site-actions button {
+      padding: 3px 10px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 999px;
+      color: var(--muted-strong);
+      background: transparent;
+      font-size: 9.5px;
+      font-weight: 650;
+      cursor: pointer;
+      transition: color 140ms ease, border-color 140ms ease, opacity 140ms ease;
+    }
+
+    .oj-site-actions button:hover:not(:disabled) {
+      color: var(--ink);
+      border-color: var(--green-line);
+    }
+
+    .oj-site-actions button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    .oj-site-actions button[data-danger='1']:hover:not(:disabled) {
+      color: var(--red);
+      border-color: var(--red-line);
+    }
+
     .auth-base-hint {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
       margin: 8px 0 0;
       color: var(--muted-weak);
       font-size: 9px;
@@ -3667,6 +3792,78 @@
       background: var(--surface-tint);
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 9px;
+    }
+
+    .auth-base-edit {
+      padding: 1px 7px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      color: var(--muted-strong);
+      background: transparent;
+      font-size: 9px;
+      cursor: pointer;
+      transition: color 140ms ease, border-color 140ms ease;
+    }
+
+    .auth-base-edit:hover {
+      color: var(--ink);
+      border-color: var(--line-strong);
+    }
+
+    .auth-base-editor {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      margin-top: 8px;
+      padding: 9px 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 10px;
+      background: var(--surface-soft);
+    }
+
+    .auth-base-editor .auth-input {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+    }
+
+    .auth-base-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .auth-base-actions button {
+      flex: 1;
+      min-height: 30px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      font-size: 10.5px;
+      font-weight: 650;
+      cursor: pointer;
+      transition: background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+    }
+
+    .auth-base-save {
+      border-color: transparent;
+      color: var(--on-accent);
+      background: var(--green);
+    }
+
+    .auth-base-save:hover:not(:disabled) {
+      background: var(--green-dark);
+    }
+
+    .auth-base-save:disabled {
+      cursor: wait;
+      opacity: 0.7;
+    }
+
+    .auth-base-cancel {
+      color: var(--muted-strong);
+      background: transparent;
+    }
+
+    .auth-base-cancel:hover {
+      border-color: var(--line-strong);
     }
 
     .auth-footer-actions a,
@@ -4127,6 +4324,178 @@
         grid-template-columns: minmax(0, 1fr);
       }
     }
+
+    /* ============================================================
+       小窗口：吸附到半屏 / 四分之一屏时的紧凑排版
+       ============================================================ */
+    @media (max-width: 620px) {
+      .page-shell {
+        width: calc(100% - 28px);
+      }
+
+      .topbar {
+        gap: 12px;
+        padding-bottom: 16px;
+      }
+
+      .top-actions {
+        gap: 8px;
+      }
+
+      .brand-mark {
+        width: 36px;
+        height: 36px;
+        border-radius: 11px;
+      }
+
+      .brand-mark .icon {
+        width: 19px;
+        height: 19px;
+      }
+
+      .brand-copy strong {
+        font-size: 15px;
+      }
+
+      .brand-copy span {
+        display: none;
+      }
+
+      .update-block .last-update {
+        display: none;
+      }
+
+      .oj-btn,
+      .account-btn,
+      .refresh-btn {
+        min-height: 36px;
+      }
+
+      .oj-btn {
+        padding: 0 9px;
+      }
+
+      .refresh-btn {
+        padding: 7px 10px;
+      }
+
+      .hero {
+        gap: 22px;
+      }
+
+      .hero h1 {
+        font-size: clamp(34px, 9.4vw, 46px);
+      }
+    }
+
+    /* 窗口矮于 660px（1080p 的上半屏、768p 的四分之一屏）时，
+       首屏不再占满一屏：压缩标题、藏掉副标题，让清单早点露出来。 */
+    @media (max-height: 660px) {
+      .page-shell {
+        padding-top: calc(10px + var(--titlebar-h));
+        padding-bottom: 24px;
+      }
+
+      .topbar {
+        padding-bottom: 12px;
+      }
+
+      .hero {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+        padding: 12px 2px 16px;
+      }
+
+      .focus-card {
+        display: none;
+      }
+
+      .hero h1 {
+        margin: 9px 0 6px;
+        font-size: clamp(26px, 6.2vh, 40px);
+      }
+
+      .hero-sub {
+        display: none;
+      }
+
+      .stats {
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .stat {
+        padding: 12px 13px 11px;
+      }
+
+      .stat-number strong {
+        font-size: 27px;
+      }
+
+      .stat-foot {
+        display: none;
+      }
+
+      .board-body {
+        min-height: 220px;
+      }
+    }
+
+    /* 矮而够宽（比如 2K 屏的四分之一屏）：统计卡排成一行，别占两行高度。 */
+    @media (min-width: 780px) and (max-height: 660px) {
+      .stats {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    /* 窗口很矮时弹窗也别顶到边：缩小内边距，留出可滚动的余量。 */
+    @media (max-height: 560px) {
+      .auth-panel,
+      .theme-panel {
+        padding: 18px 16px 14px;
+        border-radius: 18px;
+      }
+
+      .auth-close {
+        top: 10px;
+        right: 10px;
+      }
+
+      .auth-header h2 {
+        font-size: 19px;
+      }
+    }
+
+    /* 再矮就只有四分之一屏了：连大标题都收起来，优先保证清单可见。 */
+    @media (max-height: 470px) {
+      .hero {
+        padding: 6px 2px 10px;
+      }
+
+      .hero h1 {
+        display: none;
+      }
+
+      .stats {
+        margin-bottom: 10px;
+      }
+
+      .stat {
+        padding: 9px 11px 9px;
+      }
+
+      .stat-number strong {
+        font-size: 22px;
+      }
+
+      .stat-name {
+        font-size: 10px;
+      }
+
+      .board-body {
+        min-height: 180px;
+      }
+    }
   </style>
   <!--THEME_STYLE-->
 </head>
@@ -4526,8 +4895,26 @@
       </header>
 
       <p class="auth-desc" id="ojDesc">
-        OJ 部署在校内网，只有连着校园网或 VPN 才能访问。登录一次后，本机会加密保存会话，之后自动同步实验与判题得分。
+        OJ 部署在校内网，只有连着校园网或 VPN 才能访问。每个学期可能换一台机器，可以同时挂多个站点，各自独立登录；本机会加密保存会话，之后自动同步实验与判题得分。
       </p>
+
+      <!-- 多站点（2.1.0）：一个用户可能同时挂着好几台 OJ，点一下切换要操作哪台 -->
+      <div class="oj-sites" id="ojSites" role="tablist" aria-label="OJ 站点"></div>
+      <div class="oj-site-actions">
+        <button id="ojSiteAdd" type="button">+ 添加站点</button>
+        <button id="ojSiteRename" type="button">改个名字</button>
+        <button id="ojSiteRemove" type="button" data-danger="1">移除</button>
+      </div>
+
+      <div class="auth-base-editor" id="ojSiteEditor" hidden>
+        <input class="auth-input" id="ojSiteInput" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://172.31.221.68">
+        <input class="auth-input" id="ojSiteLabel" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="名字（可选），如「26 春 数据结构」">
+        <div class="auth-base-actions">
+          <button class="auth-base-save" id="ojSiteSave" type="button">检测并添加</button>
+          <button class="auth-base-cancel" id="ojSiteCancel" type="button">取消</button>
+        </div>
+        <p class="auth-error" id="ojSiteError" role="alert" hidden></p>
+      </div>
 
       <div class="auth-current" id="ojStatus" hidden></div>
 
@@ -4571,7 +4958,10 @@
         <a id="ojBaseLink" href="http://172.31.221.62/" target="_blank" rel="noreferrer">打开 OJ <span aria-hidden="true">↗</span></a>
         <button class="auth-logout" id="ojLogout" type="button" hidden>退出并清除 OJ 会话</button>
       </div>
-      <p class="auth-base-hint">服务地址：<code id="ojBase">http://172.31.221.62</code></p>
+      <p class="auth-base-hint">
+        <span>当前站点</span>
+        <code id="ojBase">http://172.31.221.62</code>
+      </p>
     </div>
   </dialog>
 
@@ -4898,16 +5288,22 @@
         completeDialog: null,
         doneSubmissions: new Map(),
         doneExpanded: new Set(),
-        // OJ（2.0.0）：第二个作业源的状态与登录流程
+        // OJ（2.0.0 / 2.1.0）：第二个作业源，可挂多个站点
         oj: {
           configured: false,
           account: '',
           online: null,
           lastSync: '',
-          error: ''
+          error: '',
+          sites: [],
+          siteCount: 0,
+          multi: false
         },
         ojCaptcha: null,
         ojLoginPending: false,
+        ojBasePending: false,
+        // 多站点（2.1.0）：对话框里当前操作哪台 OJ
+        ojSite: '',
         prefetching: false,
         loginPending: false,
         toastTimer: null,
@@ -5003,7 +5399,18 @@
         ojSubmit: document.getElementById('ojSubmit'),
         ojSubmitLabel: document.getElementById('ojSubmitLabel'),
         ojLogout: document.getElementById('ojLogout'),
-        ojBase: document.getElementById('ojBase')
+        ojBase: document.getElementById('ojBase'),
+        // 多站点（2.1.0）
+        ojSiteList: document.getElementById('ojSites'),
+        ojSiteAdd: document.getElementById('ojSiteAdd'),
+        ojSiteRename: document.getElementById('ojSiteRename'),
+        ojSiteRemove: document.getElementById('ojSiteRemove'),
+        ojSiteEditor: document.getElementById('ojSiteEditor'),
+        ojSiteInput: document.getElementById('ojSiteInput'),
+        ojSiteLabel: document.getElementById('ojSiteLabel'),
+        ojSiteSave: document.getElementById('ojSiteSave'),
+        ojSiteCancel: document.getElementById('ojSiteCancel'),
+        ojSiteError: document.getElementById('ojSiteError')
       };
 
       class ApiError extends Error {
@@ -6366,7 +6773,24 @@
         const typeChip = item.type
           ? `<span class="type-chip">${escapeHtml(item.type)}</span>`
           : '';
-        const ojChip = isOj ? '<span class="oj-chip">OJ</span>' : '';
+        // 多站点（2.1.0）：徽标带站点短名，同一条实验来自哪台机一眼能看出来
+        const ojMeta = isOj ? item.oj || {} : null;
+        const ojTone = ojMeta && Number.isFinite(Number(ojMeta.siteTone))
+          ? Math.abs(Number(ojMeta.siteTone)) % 3
+          : 0;
+        const ojBadgeName = ojMeta
+          ? String(ojMeta.siteLabel || ojMeta.siteShort || '').trim()
+          : '';
+        const ojChipTitle = ojMeta
+          ? [ojMeta.siteBase, ojMeta.siteLabel].filter(Boolean).join(' · ')
+          : '';
+        const ojChip = isOj
+          ? `<span class="oj-chip oj-chip--${ojTone}" title="${escapeHtml(ojChipTitle)}">OJ${
+              ojBadgeName
+                ? `<span class="oj-chip__site">${escapeHtml(ojBadgeName)}</span>`
+                : ''
+            }</span>`
+          : '';
         const detailId = String(item.id);
         const detailOpen = state.openDetails.has(detailId);
         const cachedDetail = state.details.get(detailId);
@@ -6482,8 +6906,12 @@
         const pending = items.length - submitted.length;
         const meta = [`${pending} 项待办`];
         if (submitted.length) meta.push(`${submitted.length} 项已交`);
-        if (kind === 'oj' && state.oj && state.oj.configured && state.oj.online === false) {
-          meta.push('离线');
+        if (kind === 'oj') {
+          const list = ojSites();
+          const loggedIn = list.filter((site) => site.configured);
+          if (list.length > 1) meta.push(`${loggedIn.length}/${list.length} 个站点`);
+          const broken = loggedIn.filter((site) => site.online === false || site.error);
+          if (broken.length) meta.push(`${broken.length} 个异常`);
         }
 
         let body = '';
@@ -6537,21 +6965,37 @@
       }
 
       function ojEmptyHint() {
-        const oj = state.oj || {};
-        if (!oj.configured) {
+        const list = ojSites();
+        if (!list.length) {
           return `
-            <span>还没登录 OJ，登录后这里会显示实验、得分与截止时间。</span>
+            <span>还没配置 OJ 站点，添加一个地址后这里会显示实验、得分与截止时间。</span>
+            <button class="source-action" type="button" data-open-oj-login>添加 OJ 站点</button>
+          `;
+        }
+
+        const loggedIn = list.filter((site) => site.configured);
+        if (!loggedIn.length) {
+          return `
+            <span>${list.length > 1 ? `${list.length} 个站点都还没登录。` : '还没登录 OJ。'}登录后这里会显示实验、得分与截止时间。</span>
             <button class="source-action" type="button" data-open-oj-login>登录 OJ</button>
           `;
         }
-        if (oj.online === false) {
-          return `<span>当前连不上 OJ，${escapeHtml(oj.error || '请确认已连上校园网或 VPN')}。</span>`;
-        }
-        if (oj.error) {
+
+        // 多站点时把出问题的那几台点出来，别只说「连不上 OJ」
+        const broken = loggedIn.filter((site) => site.error || site.online === false);
+        if (broken.length) {
+          const names = broken
+            .map((site) => `${ojSiteName(site)}（${site.online === false ? '离线' : site.error}）`)
+            .join('、');
           return `
-            <span>${escapeHtml(oj.error)}</span>
-            <button class="source-action" type="button" data-open-oj-login>重新登录</button>
+            <span>${escapeHtml(names)}</span>
+            <button class="source-action" type="button" data-open-oj-login>处理</button>
           `;
+        }
+
+        if (list.length > 1) {
+          const names = loggedIn.map((site) => ojSiteName(site)).join('、');
+          return `<span>${escapeHtml(names)} 最近都没有要做的实验。</span>`;
         }
         return '<span>最近没有要做的实验。</span>';
       }
@@ -6943,62 +7387,164 @@
 
       function setOjBusy(busy) {
         state.ojLoginPending = Boolean(busy);
+        const site = activeOjSite();
         if (els.ojSubmit) els.ojSubmit.disabled = Boolean(busy);
         if (els.ojCaptchaImage) els.ojCaptchaImage.style.opacity = busy ? '0.45' : '1';
         setText(
           els.ojSubmitLabel,
-          busy ? '正在登录…' : state.oj.configured ? '重新登录' : '登录并同步'
+          busy ? '正在登录…' : site && site.configured ? '重新登录' : '登录并同步'
         );
       }
 
+      /* --------------------------- 多站点（2.1.0） --------------------------- */
+      // 一个用户可能同时挂着好几台 OJ（每学期换机器、不同课各有一台）。
+      // 这里只负责「挑当前操作哪台」，取数合并由服务端做。
+      function ojSites() {
+        const list = state.oj && state.oj.sites;
+        return Array.isArray(list) ? list : [];
+      }
+
+      function normalizeOjBase(value) {
+        return String(value || '').replace(/\/+$/, '');
+      }
+
+      function findOjSite(base) {
+        const target = normalizeOjBase(base);
+        if (!target) return null;
+        return ojSites().find((site) => normalizeOjBase(site.base) === target) || null;
+      }
+
+      function activeOjSite() {
+        const list = ojSites();
+        if (!list.length) return null;
+        const picked = findOjSite(state.ojSite);
+        if (picked) return picked;
+        // 优先落到「还没登录的那台」，新加完站点就能直接输账号
+        return list.find((site) => !site.configured) || list[0];
+      }
+
+      function ojSiteName(site) {
+        if (!site) return 'OJ';
+        const name = String(site.label || '').trim();
+        return name || `OJ ${site.short || site.base || ''}`;
+      }
+
+      function renderOjSites() {
+        if (!els.ojSiteList) return;
+        const list = ojSites();
+        const active = activeOjSite();
+        if (active) state.ojSite = active.base;
+
+        els.ojSiteList.innerHTML = list
+          .map((site) => {
+            const selected = Boolean(active && site.base === active.base);
+            const dotState = !site.configured
+              ? 'off'
+              : site.error || site.online === false
+                ? 'alert'
+                : 'on';
+            const meta = !site.configured
+              ? '未登录'
+              : site.error
+                ? '需重新登录'
+                : site.online === false
+                  ? '离线'
+                  : site.account || '已登录';
+            const tip = `${site.base}${site.label ? ` · ${site.label}` : ''}`;
+            return `
+              <button
+                class="oj-site"
+                type="button"
+                role="tab"
+                data-oj-site="${escapeHtml(site.base)}"
+                data-state="${dotState}"
+                aria-selected="${selected ? 'true' : 'false'}"
+                title="${escapeHtml(tip)}"
+              >
+                <span class="oj-site__dot" aria-hidden="true"></span>
+                <span>${escapeHtml(ojSiteName(site))}</span>
+                <span class="oj-site__meta">${escapeHtml(meta)}</span>
+              </button>
+            `;
+          })
+          .join('');
+
+        if (els.ojSiteRemove) els.ojSiteRemove.disabled = list.length <= 1;
+        if (els.ojSiteRename) els.ojSiteRename.disabled = !list.length;
+      }
+
       function updateOjUI() {
-        const oj = state.oj || {};
-        const configured = Boolean(oj.configured);
-        const offline = configured && oj.online === false;
-        const failed = configured && Boolean(oj.error) && !offline;
+        const list = ojSites();
+        const loggedIn = list.filter((site) => site.configured);
+        const offline = loggedIn.filter((site) => site.online === false);
+        const needLogin = loggedIn.filter((site) => site.error && site.online !== false);
+
         let mode = 'off';
-        if (configured) mode = offline ? 'offline' : failed ? 'error' : 'on';
+        if (loggedIn.length) {
+          if (offline.length && offline.length === loggedIn.length) mode = 'offline';
+          else if (needLogin.length) mode = 'error';
+          else if (offline.length) mode = 'offline';
+          else mode = 'on';
+        }
 
         if (els.ojBtn) {
           els.ojBtn.dataset.state = mode;
-          const label = !configured
-            ? 'OJ 未连接，点击登录'
-            : offline
-              ? `OJ 当前离线（最后同步 ${oj.lastSync || '未知'}）`
-              : failed
-                ? `OJ 需要重新登录：${oj.error}`
-                : `OJ 已连接，账号 ${oj.account || ''}`;
+          let label;
+          if (!list.length) {
+            label = 'OJ 未配置，点击添加站点';
+          } else if (!loggedIn.length) {
+            label = `OJ 未连接（${list.length} 个站点），点击登录`;
+          } else if (mode === 'offline') {
+            label = `OJ 当前离线：${offline.map((site) => ojSiteName(site)).join('、')}`;
+          } else if (mode === 'error') {
+            label = `OJ 需要重新登录：${needLogin.map((site) => ojSiteName(site)).join('、')}`;
+          } else {
+            label = list.length > 1
+              ? `OJ 已连接 ${loggedIn.length}/${list.length} 个站点`
+              : `OJ 已连接，账号 ${loggedIn[0].account || ''}`;
+          }
           els.ojBtn.setAttribute('aria-label', label);
           els.ojBtn.title = label;
         }
-        setText(els.ojBtnLabel, offline ? 'OJ 离线' : 'OJ');
+        setText(
+          els.ojBtnLabel,
+          mode === 'offline' ? 'OJ 离线' : list.length > 1 ? `OJ · ${loggedIn.length}/${list.length}` : 'OJ'
+        );
       }
 
       function updateOjDialogContent() {
-        const oj = state.oj || {};
-        const configured = Boolean(oj.configured);
-        const base = String(oj.base || 'http://172.31.221.62').replace(/\/+$/, '');
+        const list = ojSites();
+        const site = activeOjSite();
+        renderOjSites();
 
-        if (els.ojBase) setText(els.ojBase, base);
-        if (els.ojBaseLink) els.ojBaseLink.href = `${base}/`;
+        const base = normalizeOjBase(site && site.base);
+        if (els.ojBase) setText(els.ojBase, base || '还没添加站点');
+        if (els.ojBaseLink) {
+          els.ojBaseLink.hidden = !base;
+          if (base) els.ojBaseLink.href = `${base}/`;
+        }
+
+        const configured = Boolean(site && site.configured);
         if (els.ojLogout) els.ojLogout.hidden = !configured;
 
         if (els.ojStatus) {
-          els.ojStatus.hidden = !configured;
-          if (configured) {
-            const parts = [`已登录 ${oj.account || ''}`];
-            if (oj.lastSync) {
-              const when = new Date(oj.lastSync);
+          els.ojStatus.hidden = !site;
+          if (site) {
+            const parts = [];
+            if (list.length > 1) parts.push(ojSiteName(site));
+            parts.push(configured ? `已登录 ${site.account || ''}` : '这台还没登录');
+            if (site.lastSync) {
+              const when = new Date(site.lastSync);
               if (!Number.isNaN(when.getTime())) parts.push(`最近同步 ${formatUpdatedTime(when)}`);
             }
-            if (oj.online === false) parts.push('当前网络连不上 OJ');
-            else if (oj.error) parts.push(oj.error);
+            if (site.online === false) parts.push('当前网络连不上');
+            else if (site.error) parts.push(site.error);
             els.ojStatus.innerHTML = `<span>${escapeHtml(parts.filter(Boolean).join(' · '))}</span>`;
           }
         }
 
         if (configured && !els.ojUsername.value) {
-          els.ojUsername.value = oj.account || '';
+          els.ojUsername.value = site.account || '';
         }
         setText(
           els.ojSubmitLabel,
@@ -7006,12 +7552,183 @@
         );
       }
 
+      /* --------------------------- 增删改站点 --------------------------- */
+      function setOjSiteError(message) {
+        if (!els.ojSiteError) return;
+        const text = String(message || '');
+        els.ojSiteError.hidden = !text;
+        els.ojSiteError.textContent = text;
+      }
+
+      function openOjSiteEditor(mode) {
+        if (!els.ojSiteEditor) return;
+        setOjSiteError('');
+        els.ojSiteEditor.dataset.mode = mode || 'add';
+        const site = activeOjSite();
+        if (mode === 'rename') {
+          els.ojSiteInput.hidden = true;
+          els.ojSiteInput.value = '';
+          els.ojSiteLabel.value = site ? site.label || '' : '';
+          els.ojSiteLabel.placeholder = '起个名字，如「26 春 数据结构」';
+          els.ojSiteSave.textContent = '保存名字';
+        } else {
+          els.ojSiteInput.hidden = false;
+          els.ojSiteInput.value = '';
+          els.ojSiteInput.placeholder = site && site.base === 'http://172.31.221.62'
+            ? 'http://172.31.221.68'
+            : 'http://172.31.221.68';
+          els.ojSiteLabel.value = '';
+          els.ojSiteLabel.placeholder = '名字（可选），如「26 春 数据结构」';
+          els.ojSiteSave.textContent = '检测并添加';
+        }
+        els.ojSiteEditor.hidden = false;
+        (mode === 'rename' ? els.ojSiteLabel : els.ojSiteInput).focus();
+      }
+
+      function closeOjSiteEditor() {
+        if (!els.ojSiteEditor) return;
+        els.ojSiteEditor.hidden = true;
+        setOjSiteError('');
+      }
+
+      async function saveOjSite() {
+        if (!els.ojSiteEditor || state.ojBasePending) return;
+        const mode = els.ojSiteEditor.dataset.mode || 'add';
+        const value = els.ojSiteInput.value.trim();
+        const label = els.ojSiteLabel.value.trim();
+        const site = activeOjSite();
+
+        if (mode === 'rename') {
+          if (!site) {
+            setOjSiteError('还没有站点可以改名。');
+            return;
+          }
+          state.ojBasePending = true;
+          els.ojSiteSave.disabled = true;
+          setOjSiteError('');
+          try {
+            const result = await requestJSON('/api/oj/sites/rename', {
+              method: 'POST',
+              body: JSON.stringify({ base: site.base, label })
+            });
+            if (result.oj) state.oj = result.oj;
+            updateOjUI();
+            updateOjDialogContent();
+            renderAll(); // 徽标上是站点名，改完要重绘看板
+            closeOjSiteEditor();
+            showToast(label ? `已改名为「${label}」` : '已清空站点名字');
+          } catch (error) {
+            setOjSiteError(error.message || '改名失败，请稍后重试。');
+          } finally {
+            state.ojBasePending = false;
+            els.ojSiteSave.disabled = false;
+          }
+          return;
+        }
+
+        if (!value) {
+          setOjSiteError('请填写 OJ 地址。');
+          els.ojSiteInput.focus();
+          return;
+        }
+
+        state.ojBasePending = true;
+        els.ojSiteSave.disabled = true;
+        els.ojSiteSave.textContent = '检测中…';
+        setOjSiteError('');
+
+        try {
+          const result = await requestJSON('/api/oj/sites/add', {
+            method: 'POST',
+            body: JSON.stringify({ base: value, label })
+          });
+          if (result.oj) state.oj = result.oj;
+          state.ojSite = result.base || value;
+          updateOjUI();
+          updateOjDialogContent();
+          renderAll(); // 站点数变了，看板头部要跟着改
+          closeOjSiteEditor();
+
+          // 服务端顺手探到了一张新站点的验证码，直接用，省一次请求
+          const captcha = (result && result.captcha) || {};
+          if (captcha.key && captcha.image) {
+            state.ojCaptcha = { key: captcha.key, image: captcha.image };
+            if (els.ojCaptchaImage) els.ojCaptchaImage.src = captcha.image;
+            if (els.ojCaptcha) els.ojCaptcha.value = '';
+          } else {
+            await refreshOjCaptcha();
+          }
+
+          els.ojPassword.value = '';
+          els.ojUsername.focus();
+          showToast(
+            result.added
+              ? `已添加 ${result.base}，在这台登录一下就能同步`
+              : `${result.base} 已经在列表里了`
+          );
+        } catch (error) {
+          setOjSiteError(error.message || '添加失败，检查一下地址有没有写错。');
+        } finally {
+          state.ojBasePending = false;
+          if (els.ojSiteSave) {
+            els.ojSiteSave.disabled = false;
+            els.ojSiteSave.textContent = mode === 'rename' ? '保存名字' : '检测并添加';
+          }
+        }
+      }
+
+      async function removeOjSite() {
+        const site = activeOjSite();
+        if (!site) return;
+        if (ojSites().length <= 1) {
+          showToast('至少要留一个站点。', 'error');
+          return;
+        }
+        const name = ojSiteName(site);
+        if (!window.confirm(`移除「${name}」？这台 OJ 的登录会话会被清掉，实验也不再显示。`)) {
+          return;
+        }
+        try {
+          const result = await requestJSON('/api/oj/sites/remove', {
+            method: 'POST',
+            body: JSON.stringify({ base: site.base })
+          });
+          if (result.oj) state.oj = result.oj;
+          state.ojSite = '';
+          updateOjUI();
+          updateOjDialogContent();
+          setOjError('');
+          await refreshOjCaptcha();
+          showToast(`已移除 ${name}`);
+          await loadAssignments({ manual: true, force: true });
+        } catch (error) {
+          showToast(error.message || '移除失败，请稍后重试。', 'error');
+        }
+      }
+
+      function selectOjSite(base) {
+        if (!base || base === state.ojSite) return;
+        state.ojSite = base;
+        setOjError('');
+        els.ojPassword.value = '';
+        const site = findOjSite(base);
+        els.ojUsername.value = site && site.account ? site.account : '';
+        updateOjDialogContent();
+        refreshOjCaptcha();
+      }
+
       async function refreshOjCaptcha() {
         if (IS_MOCK) return;
+        const site = activeOjSite();
+        if (!site) {
+          state.ojCaptcha = null;
+          if (els.ojCaptchaImage) els.ojCaptchaImage.removeAttribute('src');
+          return;
+        }
         try {
           const result = await requestJSON('/api/oj/captcha', {
             method: 'POST',
-            body: JSON.stringify({})
+            body: JSON.stringify({ base: site.base })
           });
           const captcha = (result && result.captcha) || {};
           state.ojCaptcha = captcha.key ? captcha : null;
@@ -7037,7 +7754,14 @@
         }
         if (els.ojDialog.open) return;
         setOjError('');
+        // 打开时自动落到「还没登录的那台」，新加完站点就能直接输账号
+        const site = activeOjSite();
+        state.ojSite = site ? site.base : '';
+        if (site && site.account && !els.ojUsername.value) {
+          els.ojUsername.value = site.account;
+        }
         updateOjDialogContent();
+        closeOjSiteEditor();
         els.ojDialog.showModal();
         els.ojUsername.focus();
         await refreshOjCaptcha();
@@ -7080,18 +7804,27 @@
         setOjError('');
         setOjBusy(true);
 
+        const site = activeOjSite();
         try {
           const result = await requestJSON('/api/oj/login', {
             method: 'POST',
-            body: JSON.stringify({ username, password, captcha, captchaKey })
+            body: JSON.stringify({
+              username,
+              password,
+              captcha,
+              captchaKey,
+              base: site ? site.base : ''
+            })
           });
           state.oj = result.oj || { ...state.oj, configured: true };
+          if (result.base) state.ojSite = result.base;
           els.ojPassword.value = '';
           updateOjUI();
           updateOjDialogContent();
           closeOjDialog();
           const count = Number(result.count || 0);
-          showToast(count ? `OJ 已连接，同步到 ${count} 项实验` : 'OJ 已连接');
+          const name = site ? ojSiteName(site) : 'OJ';
+          showToast(count ? `${name} 已连接，同步到 ${count} 项实验` : `${name} 已连接`);
           await loadAssignments({ manual: true, force: true });
         } catch (error) {
           if (error.code === 'OJ_CAPTCHA_WRONG') {
@@ -7111,20 +7844,23 @@
       }
 
       async function handleOjLogout() {
-        if (!window.confirm('退出并清除本机保存的 OJ 会话？之后需要重新登录。')) {
+        const site = activeOjSite();
+        if (!site) return;
+        const name = ojSiteName(site);
+        if (!window.confirm(`退出「${name}」并清除这台保存的会话？其他站点不受影响。`)) {
           return;
         }
         try {
           const result = await requestJSON('/api/oj/logout', {
             method: 'POST',
-            body: JSON.stringify({})
+            body: JSON.stringify({ base: site.base })
           });
-          state.oj = result.oj || { configured: false, account: '', online: null, lastSync: '', error: '' };
+          if (result.oj) state.oj = result.oj;
           updateOjUI();
           updateOjDialogContent();
           setOjError('');
           await refreshOjCaptcha();
-          showToast('已退出 OJ，本机会话已清除');
+          showToast(`已退出 ${name}，本机会话已清除`);
           await loadAssignments({ manual: true, force: true });
         } catch (error) {
           setOjError(error.message || '退出失败，请稍后重试。');
@@ -7926,6 +8662,7 @@
         els.ojDialog.addEventListener('close', () => {
           els.ojPassword.value = '';
           setOjError('');
+          closeOjSiteEditor();
         });
         els.ojDialog.addEventListener('click', (event) => {
           if (event.target === els.ojDialog) closeOjDialog();
@@ -7942,6 +8679,35 @@
           }
         });
       }
+
+      // 多站点（2.1.0）
+      if (els.ojSiteList) {
+        els.ojSiteList.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-oj-site]');
+          if (button) selectOjSite(button.dataset.ojSite);
+        });
+      }
+      if (els.ojSiteAdd) {
+        els.ojSiteAdd.addEventListener('click', () => openOjSiteEditor('add'));
+      }
+      if (els.ojSiteRename) {
+        els.ojSiteRename.addEventListener('click', () => openOjSiteEditor('rename'));
+      }
+      if (els.ojSiteRemove) els.ojSiteRemove.addEventListener('click', removeOjSite);
+      if (els.ojSiteSave) els.ojSiteSave.addEventListener('click', saveOjSite);
+      if (els.ojSiteCancel) els.ojSiteCancel.addEventListener('click', closeOjSiteEditor);
+      [els.ojSiteInput, els.ojSiteLabel].forEach((input) => {
+        if (!input) return;
+        input.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            saveOjSite();
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            closeOjSiteEditor();
+          }
+        });
+      });
 
       els.passwordToggle.addEventListener('click', () => {
         const showing = els.authPassword.type === 'text';
@@ -8226,6 +8992,8 @@
           button.setAttribute('aria-pressed', String(value));
         });
       }
+      // 让 Python 侧在窗口被系统最大化 / 还原时立即推一次，不用等 1.5 秒轮询。
+      window.__syncMaximized = syncMaximized;
 
       async function refreshState() {
         const api = desktopApi();

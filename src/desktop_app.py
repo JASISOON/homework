@@ -44,8 +44,10 @@ EVENT_MODIFY_STATE = 0x0002
 MAIN_WIDTH = 1180
 MAIN_HEIGHT = 830
 # 和 create_window(min_size=...) 保持一致，手动缩放时不得小于它。
-WINDOW_MIN_WIDTH = 900
-WINDOW_MIN_HEIGHT = 620
+# 取 480×360 是为了能被 Windows 的四分之一屏吸附住：1080p 屏幕上下二分后
+# 只有 540 高，1366×768 左右二分只有 683 宽，再大就吸不进去了。
+WINDOW_MIN_WIDTH = 480
+WINDOW_MIN_HEIGHT = 360
 BALL_SIZE = 80
 BALL_URGENT_SECONDS = 48 * 3600
 BALL_CARD_ROWS = 3
@@ -61,7 +63,7 @@ BALL_PARKING_POSITION = (-BALL_SIZE - 400, -BALL_SIZE - 400)
 
 # ---------------------------------------------------------------------------
 # 无边框窗口
-# ---------------------------------------------------------------------------
+# 窗口过程里的 WM_NCHITTEST 返回值（够用就行，其余交给系统）。
 WM_NCLBUTTONDOWN = 0x00A1
 VK_LBUTTON = 0x01
 
@@ -74,6 +76,7 @@ HT_BOTTOM = 15
 HT_BOTTOMLEFT = 16
 HT_BOTTOMRIGHT = 17
 
+# 前端 `.win-resize-layer` 的 data-resize 值 → HT 常量（WM_NCHITTEST 同一套）。
 RESIZE_EDGES = {
     "left": HT_LEFT,
     "right": HT_RIGHT,
@@ -154,6 +157,22 @@ class MONITORINFO(ctypes.Structure):
     ]
 
 
+def _setup_monitor_prototypes() -> None:
+    """user32 的原型是进程级共享的，这里统一成 c_void_p。
+
+    ball_window 里把 ``GetMonitorInfoW`` 声明成了 ``POINTER(它自己的 MONITORINFO)``，
+    和本文件的结构体不是同一个类，先设置的那个会覆盖后设置的，调用时直接 TypeError。
+    """
+    user32 = ctypes.windll.user32
+    user32.MonitorFromPoint.restype = ctypes.c_void_p
+    user32.MonitorFromPoint.argtypes = [wt.POINT, wt.DWORD]
+    user32.GetMonitorInfoW.restype = wt.BOOL
+    user32.GetMonitorInfoW.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+
+
+_setup_monitor_prototypes()
+
+
 def window_rect(hwnd: int) -> tuple[int, int, int, int]:
     rect = wt.RECT()
     try:
@@ -170,13 +189,353 @@ def work_area_for_window(hwnd: int) -> tuple[int, int, int, int]:
         monitor = user32.MonitorFromWindow(ctypes.c_void_p(hwnd), MONITOR_DEFAULTTONEAREST)
         info = MONITORINFO()
         info.cbSize = ctypes.sizeof(MONITORINFO)
-        if monitor and user32.GetMonitorInfoW(ctypes.c_void_p(monitor), ctypes.byref(info)):
+        if monitor and user32.GetMonitorInfoW(
+            ctypes.c_void_p(monitor),
+            ctypes.cast(ctypes.byref(info), ctypes.c_void_p),
+        ):
             rc = info.rcWork
             return int(rc.left), int(rc.top), int(rc.right), int(rc.bottom)
     except Exception:
         pass
     user32 = ctypes.windll.user32
     return 0, 0, int(user32.GetSystemMetrics(0)), int(user32.GetSystemMetrics(1))
+
+
+# ---------------------------------------------------------------------------
+# Windows 原生窗口行为（Aero Snap / 边缘缩放 / Win11 贴靠布局）
+# ---------------------------------------------------------------------------
+# frameless 窗口被 WinForms 做成了 WS_POPUP，Windows 的吸附不认这种窗口：
+# Win+←/→ 半屏、Win+← 之后 Win+↑ 四分之一屏、拖到边缘吸附都不会生效。
+# 补回「可缩放 + 有最大化框」这几个样式位之后，系统的吸附逻辑就认得它了，
+# 窗口外观仍是自绘无边框（客户区由 WinForms 按 FormBorderStyle.None 算）。
+#
+# 但「能被吸附」不等于「吸附得原生」。自己用 SetWindowPos 逐帧跟光标做出来的
+# 半屏 / 四分之一屏是死的：没有系统那一下甩位动画、没有甩到边缘的橡皮筋手感、
+# 没有 Win11 悬停最大化按钮的贴靠布局面板。真正原生的做法是把消息还给系统：
+#
+#   * 拖动   —— 在窗口线程里 ReleaseCapture() + WM_NCLBUTTONDOWN/HTCAPTION，
+#               让 DefWindowProc 进入系统自己的移动循环，剩下全归它管；
+#   * 缩放   —— WM_NCHITTEST 在边缘返回 HTLEFT/HTTOP…，系统跑自己的缩放循环；
+#   * 最大化 —— WM_NCHITTEST 在最大化按钮上返回 HTMAXBUTTON，Win11 才会在
+#               悬停时弹出贴靠布局；点击也由系统直接发 SC_MAXIMIZE / SC_RESTORE；
+#   * 最大化尺寸 —— WM_GETMINMAXINFO 把目标框修正到工作区，否则无边框窗口
+#               最大化会溢出、snap 到四分之一屏会抖。
+#
+# 全程不需要我们算「哪个边缘对应哪块矩形」——系统的 SetWindowPos 会告诉我们。
+WS_POPUP = 0x80000000
+WS_CLIPSIBLINGS = 0x04000000
+WS_THICKFRAME = 0x00040000
+WS_MAXIMIZEBOX = 0x00010000
+WS_MINIMIZEBOX = 0x00020000
+WS_SYSMENU = 0x00080000
+GWL_STYLE = -16
+SWP_FRAMECHANGED = 0x0020
+
+# 命中测试返回值（HT_LEFT… 见文件上方那组 HT_* 常量）。
+HT_CLIENT = 1
+HT_CAPTION = 2
+HT_MAXBUTTON = 9
+WM_NCHITTEST = 0x0084
+WM_NCLBUTTONDBLCLK = 0x00A3
+WM_GETMINMAXINFO = 0x0024
+WM_DPICHANGED = 0x02E0
+WM_ENTERSIZEMOVE = 0x0231
+WM_EXITSIZEMOVE = 0x0232
+# 自定义：让自己在窗口线程里发起系统移动循环（PostMessage 进来，不阻塞调用方）。
+WM_APP = 0x8000
+WM_START_DRAG = WM_APP + 0x51
+
+# 自绘标题栏的几何，必须和 homework-reminder.html 里对得上：
+# --titlebar-h: 38px、.win-btn 36×30、gap 2px、标题栏 padding-right 6px。
+TITLEBAR_HEIGHT = 38.0
+WIN_BTN_WIDTH = 36.0
+WIN_BTN_HEIGHT = 30.0
+WIN_BTN_GAP = 2.0
+TITLEBAR_PADDING_RIGHT = 6.0
+# 边缘多宽算「抓到了边框」。系统默认给普通窗口 8px 左右，这里按 DPI 折算。
+RESIZE_BORDER = 6.0
+
+
+def _metrics_for_window(hwnd: int) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
+    """窗口所在显示器的 (屏幕矩形, 工作区矩形)。"""
+    user32 = ctypes.windll.user32
+    try:
+        monitor = user32.MonitorFromWindow(ctypes.c_void_p(hwnd), MONITOR_DEFAULTTONEAREST)
+        info = MONITORINFO()
+        info.cbSize = ctypes.sizeof(MONITORINFO)
+        if monitor and user32.GetMonitorInfoW(
+            ctypes.c_void_p(monitor),
+            ctypes.cast(ctypes.byref(info), ctypes.c_void_p),
+        ):
+            m, w = info.rcMonitor, info.rcWork
+            return (
+                (int(m.left), int(m.top), int(m.right), int(m.bottom)),
+                (int(w.left), int(w.top), int(w.right), int(w.bottom)),
+            )
+    except Exception:
+        pass
+    width, height = int(user32.GetSystemMetrics(0)), int(user32.GetSystemMetrics(1))
+    return (0, 0, width, height), (0, 0, width, height)
+
+
+def titlebar_scale(hwnd: int) -> float:
+    """把 CSS 里的逻辑像素换算成物理像素用的比例。"""
+    return dpi_scale_for_window(hwnd) or 1.0
+
+
+def maximize_button_rect(hwnd: int) -> tuple[int, int, int, int] | None:
+    """最大化按钮在屏幕上的矩形（逻辑像素 × DPI）。
+
+    三个按钮从右往左是「关闭 / 最大化 / 最小化」，所以最大化按钮要跳过最右边
+    那个关闭按钮和它左边那道 2px 的 gap。写死是没办法的事：窗口是非客户区全屏
+    自绘，系统只能靠 WM_NCHITTEST 反推按钮在哪，而 WebView 里的 DOM 位置系统
+    看不见。改标题栏布局时这几个常量要跟着改。
+    """
+    rect = wt.RECT()
+    if not ctypes.windll.user32.GetWindowRect(ctypes.c_void_p(hwnd), ctypes.byref(rect)):
+        return None
+    scale = titlebar_scale(hwnd)
+    btn_w = int(round(WIN_BTN_WIDTH * scale))
+    btn_h = int(round(WIN_BTN_HEIGHT * scale))
+    gap = int(round(WIN_BTN_GAP * scale))
+    pad = int(round(TITLEBAR_PADDING_RIGHT * scale))
+    bar_h = int(round(TITLEBAR_HEIGHT * scale))
+    if btn_w <= 0 or btn_h <= 0:
+        return None
+    right = int(rect.right) - pad - btn_w - gap
+    left = right - btn_w
+    top = int(rect.top) + max(0, (bar_h - btn_h) // 2)
+    return left, top, right, top + btn_h
+
+
+def hit_test(hwnd: int, screen_x: int, screen_y: int) -> int:
+    """WM_NCHITTEST 的判定：边框给缩放，最大化按钮给 HTMAXBUTTON，其余是客户区。"""
+    rect = wt.RECT()
+    user32 = ctypes.windll.user32
+    if not user32.GetWindowRect(ctypes.c_void_p(hwnd), ctypes.byref(rect)):
+        return HT_CLIENT
+    left, top, right, bottom = (int(rect.left), int(rect.top), int(rect.right), int(rect.bottom))
+    if right <= left or bottom <= top:
+        return HT_CLIENT
+
+    button = maximize_button_rect(hwnd)
+    if button and button[0] <= screen_x < button[2] and button[1] <= screen_y < button[3]:
+        return HT_MAXBUTTON
+
+    # 最大化之后没有可拖的边框（和资源管理器一致），否则从边缘拽会给窗口
+    # 拽出一条「还原后剩 1px」的怪状态。
+    if user32.IsZoomed(ctypes.c_void_p(hwnd)):
+        return HT_CLIENT
+
+    scale = titlebar_scale(hwnd)
+    border = max(3, int(round(RESIZE_BORDER * scale)))
+    border = min(border, max(3, min(right - left, bottom - top) // 4))
+
+    on_left = screen_x - left < border
+    on_right = right - screen_x <= border
+    on_top = screen_y - top < border
+    on_bottom = bottom - screen_y <= border
+
+    if on_top and on_left:
+        return HT_TOPLEFT
+    if on_top and on_right:
+        return HT_TOPRIGHT
+    if on_bottom and on_left:
+        return HT_BOTTOMLEFT
+    if on_bottom and on_right:
+        return HT_BOTTOMRIGHT
+    if on_left:
+        return HT_LEFT
+    if on_right:
+        return HT_RIGHT
+    if on_top:
+        return HT_TOP
+    if on_bottom:
+        return HT_BOTTOM
+    return HT_CLIENT
+
+
+class MINMAXINFO(ctypes.Structure):
+    _fields_ = [
+        ("ptReserved", wt.POINT),
+        ("ptMaxSize", wt.POINT),
+        ("ptMaxPosition", wt.POINT),
+        ("ptMinTrackSize", wt.POINT),
+        ("ptMaxTrackSize", wt.POINT),
+    ]
+
+
+# 补上 WS_THICKFRAME 之后，系统会按「可缩放窗口」给客户区留一圈边框
+# （125% 缩放下单边 10px）。无边框自绘窗口不需要这圈边，所以挂一层窗口过程，
+# 把 WM_NCCALCSIZE 的「客户区」直接定成整个窗口，边框厚度归零。
+GWLP_WNDPROC = -4
+WM_NCCALCSIZE = 0x0083
+LRESULT = ctypes.c_ssize_t
+_SNAP_WNDPROC_TYPE = ctypes.WINFUNCTYPE(
+    LRESULT, ctypes.c_void_p, wt.UINT, ctypes.c_size_t, ctypes.c_ssize_t
+)
+_snap_wndproc = None
+_snap_origin_procs: dict[int, int] = {}
+
+
+def _unpack_point(lparam: int) -> tuple[int, int]:
+    """拆 WM_* 消息里打包的 16 位有符号屏幕坐标（多显示器会有负值）。"""
+    value = int(lparam) & 0xFFFFFFFF
+    x = value & 0xFFFF
+    y = (value >> 16) & 0xFFFF
+    if x >= 0x8000:
+        x -= 0x10000
+    if y >= 0x8000:
+        y -= 0x10000
+    return x, y
+
+
+def _call_origin(hwnd, msg, wparam, lparam):
+    """把消息转给 pywebview / WinForms 原来的窗口过程。"""
+    key = int(hwnd) if hwnd else 0
+    origin = _snap_origin_procs.get(key)
+    if origin:
+        return ctypes.windll.user32.CallWindowProcW(
+            ctypes.c_void_p(origin), ctypes.c_void_p(hwnd), msg, wparam, lparam
+        )
+    return ctypes.windll.user32.DefWindowProcW(ctypes.c_void_p(hwnd), msg, wparam, lparam)
+
+
+def _fix_max_track(hwnd: int, lparam: int) -> None:
+    """把最大化目标框修正到工作区。
+
+    无边框窗口（客户区 = 整窗）如果不改这里，系统会按「含边框」算最大化尺寸，
+    结果盖住任务栏；snap 到四分之一屏时又会因为 ptMaxTrackSize 不够而抖。
+    """
+    monitor, work = _metrics_for_window(hwnd)
+    work_w = max(0, work[2] - work[0])
+    work_h = max(0, work[3] - work[1])
+    if work_w <= 0 or work_h <= 0:
+        return
+    try:
+        mmi = ctypes.cast(
+            ctypes.c_void_p(int(lparam)), ctypes.POINTER(MINMAXINFO)
+        ).contents
+        mmi.ptMaxPosition.x = work[0] - monitor[0]
+        mmi.ptMaxPosition.y = work[1] - monitor[1]
+        mmi.ptMaxSize.x = work_w
+        mmi.ptMaxSize.y = work_h
+        mmi.ptMaxTrackSize.x = max(int(mmi.ptMaxTrackSize.x), work_w)
+        mmi.ptMaxTrackSize.y = max(int(mmi.ptMaxTrackSize.y), work_h)
+    except Exception:
+        pass
+
+
+def _snap_wndproc_callback(hwnd, msg, wparam, lparam):
+    try:
+        if msg == WM_NCCALCSIZE and wparam:
+            # 客户区 = 整个窗口：把 WS_THICKFRAME 带来的边框厚度抵掉。
+            return 0
+        if msg == WM_NCHITTEST:
+            x, y = _unpack_point(lparam)
+            return hit_test(int(hwnd or 0), x, y)
+        if msg == WM_START_DRAG:
+            # 在自己线程里把鼠标还给系统 —— 拖动时鼠标捕获在 WebView2 手里，
+            # ReleaseCapture() 只对本线程有效，所以必须回到窗口线程做这件事。
+            # 之后 DefWindowProc 会接管，跑系统原生的移动循环（贴边预览、
+            # 甩到边缘吸附、拖到顶部最大化、松手落位全是系统自己在做）。
+            user32 = ctypes.windll.user32
+            user32.SendMessageW.restype = LRESULT
+            user32.SendMessageW.argtypes = [
+                ctypes.c_void_p,
+                wt.UINT,
+                ctypes.c_size_t,
+                ctypes.c_ssize_t,
+            ]
+            user32.ReleaseCapture()
+            user32.SendMessageW(
+                ctypes.c_void_p(hwnd), WM_NCLBUTTONDOWN, HT_CAPTION, 0
+            )
+            return 0
+        if msg == WM_GETMINMAXINFO:
+            # 先让原过程写最小尺寸（WinForms 的 MinimumSize），再修最大化目标框。
+            result = _call_origin(hwnd, msg, wparam, lparam)
+            _fix_max_track(int(hwnd or 0), lparam)
+            return result
+        return _call_origin(hwnd, msg, wparam, lparam)
+    except Exception:
+        # 回调里绝对不能抛异常：抛出去会让窗口过程返回垃圾值，界面直接花掉。
+        try:
+            return ctypes.windll.user32.DefWindowProcW(
+                ctypes.c_void_p(hwnd), msg, wparam, lparam
+            )
+        except Exception:
+            return 0
+
+
+def _install_nc_calc(hwnd: int) -> bool:
+    """挂客户区修正的窗口过程；返回是否「这次才装上」。"""
+    global _snap_wndproc
+    if hwnd in _snap_origin_procs:
+        return False
+    user32 = ctypes.windll.user32
+    user32.CallWindowProcW.restype = LRESULT
+    user32.CallWindowProcW.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        wt.UINT,
+        ctypes.c_size_t,
+        ctypes.c_ssize_t,
+    ]
+    if _snap_wndproc is None:
+        _snap_wndproc = _SNAP_WNDPROC_TYPE(_snap_wndproc_callback)
+    set_ptr = getattr(user32, "SetWindowLongPtrW", None) or user32.SetWindowLongW
+    set_ptr.restype = ctypes.c_void_p
+    set_ptr.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+    origin = set_ptr(
+        ctypes.c_void_p(hwnd), GWLP_WNDPROC, ctypes.cast(_snap_wndproc, ctypes.c_void_p)
+    )
+    if not origin:
+        return False
+    _snap_origin_procs[hwnd] = int(origin)
+    return True
+
+
+def install_snap_styles(window: "webview.Window | None") -> bool:
+    """把无边框窗口改造成 Windows 认可的可吸附窗口（只改样式位，不改外观）。"""
+    hwnd = window_hwnd(window)
+    if not hwnd:
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        user32.GetWindowLongW.restype = ctypes.c_long
+        user32.GetWindowLongW.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        user32.SetWindowLongW.restype = ctypes.c_long
+        user32.SetWindowLongW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_long]
+        style = int(user32.GetWindowLongW(ctypes.c_void_p(hwnd), GWL_STYLE))
+        wanted = (
+            (style & ~WS_POPUP)
+            | WS_CLIPSIBLINGS
+            | WS_THICKFRAME
+            | WS_MAXIMIZEBOX
+            | WS_MINIMIZEBOX
+            | WS_SYSMENU
+        )
+        if wanted != style:
+            user32.SetWindowLongW(ctypes.c_void_p(hwnd), GWL_STYLE, wanted)
+        installed = _install_nc_calc(hwnd)
+        if wanted != style or installed:
+            user32.SetWindowPos(
+                ctypes.c_void_p(hwnd),
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+        logging.getLogger(hs.APP_NAME).debug(
+            "已开启窗口吸附样式：0x%08X -> 0x%08X", style & 0xFFFFFFFF, wanted & 0xFFFFFFFF
+        )
+        return True
+    except Exception:
+        logging.getLogger(hs.APP_NAME).debug("设置吸附样式失败", exc_info=True)
+        return False
 
 
 def primary_work_area() -> tuple[int, int, int, int]:
@@ -855,9 +1214,9 @@ class DesktopBridge:
         self._ball_visible = False
         self._ball_position: tuple[int, int] | None = None
         self._drag_residual = (0.0, 0.0)
-        self._drag_thread: threading.Thread | None = None
         self._resize_thread: threading.Thread | None = None
         self._shrink: ShrinkAnimation | None = None
+        self._initial_size_done = False
         self._shutting_down = False
         self._tray: TrayController | None = None
         self._tray_tip_shown = False
@@ -899,25 +1258,56 @@ class DesktopBridge:
         threading.Thread(target=run, daemon=True).start()
 
     def _on_window_shown(self, window):
+        # 先补回系统的可吸附样式，Win+方向键 / 拖到屏幕边缘才能用。
+        install_snap_styles(window)
         fit_maximized_bounds(window)
         apply_window_frame(window, maximized=False)
         if window is self._main and self._tray is not None:
             self._tray.ensure(window)
-        # 去掉系统边框后客户区会缩小 16×39，这里补回设计尺寸。
-        try:
-            window.resize(MAIN_WIDTH, MAIN_HEIGHT)
-        except Exception:
-            self._log.debug("恢复窗口尺寸失败", exc_info=True)
+        # 只在第一次显示时定尺寸。以前每次 shown 都 resize 回 1180×830，结果
+        # 用户把窗口贴成半屏后收进托盘、再唤回来，窗又跳回原尺寸了 —— 原生
+        # 程序不会这么干。客户区内缩的问题已经由 WM_NCCALCSIZE 解决，不需要
+        # 再靠每次补尺寸来兜。
+        if not self._initial_size_done:
+            self._initial_size_done = True
+            try:
+                window.resize(MAIN_WIDTH, MAIN_HEIGHT)
+            except Exception:
+                self._log.debug("设置初始窗口尺寸失败", exc_info=True)
         if window is self._main:
             # 从托盘 / 悬浮球唤回时窗口是“空白”的（上次退场停在透明态），
             # 这里补一次进场，顺便兜住任何没走到 __appAnim 的显示路径。
             self._play_main_anim("enter")
 
     def _on_window_maximized(self, window):
+        # 有些情况下 WinForms 会重建窗口句柄（比如 DPI 变化），样式会丢，
+        # 这里顺手补一遍；已经装好的话是空操作。
+        install_snap_styles(window)
         apply_window_frame(window, maximized=True)
+        # 系统直接处理最大化按钮（HTMAXBUTTON）时前端收不到通知，
+        # 不等那 1.5 秒轮询，这里立刻把图标换过来。
+        self._sync_maximized_ui(window, True)
 
     def _on_window_restored(self, window):
+        install_snap_styles(window)
         apply_window_frame(window, maximized=False)
+        self._sync_maximized_ui(window, False)
+
+    def _sync_maximized_ui(self, window, maximized: bool) -> None:
+        """把「是否最大化」推给自绘标题栏，切换最大化/还原图标。"""
+        if window is not self._main:
+            return
+        script = "window.__syncMaximized && window.__syncMaximized(%s)" % (
+            "true" if maximized else "false"
+        )
+
+        def run():
+            try:
+                window.evaluate_js(script)
+            except Exception:
+                self._log.debug("同步最大化图标失败", exc_info=True)
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _target_window(self, target: str) -> webview.Window | None:
         key = str(target or "").strip().lower()
@@ -978,83 +1368,62 @@ class DesktopBridge:
         return self.window_state(target)
 
     def window_drag(self, target: str = "main") -> dict:
-        """按住自绘标题栏时拖动窗口。
+        """按住自绘标题栏时把拖动交还给系统。
 
-        为什么不用 ``WM_NCLBUTTONDOWN + HTCAPTION``：frameless 窗口的
-        ``DefWindowProc`` 对这条消息不启动移动循环（实测窗口纹丝不动），而且
-        ``ReleaseCapture()`` 只对**本线程**的鼠标捕获有效 —— 拖动时捕获在
-        WebView2 的 UI 线程手里，后台线程调它等于没调。
+        以前是自己轮询光标、逐帧 SetWindowPos，再自己算「贴到哪个边 → 摆成哪块
+        矩形」。那样能吸附，但手感是死的：没有系统的甩位动画、没有边缘橡皮筋、
+        Win11 悬停最大化也没有贴靠布局面板。
 
-        所以自己跟：记下「光标 - 窗口原点」的偏移，之后按 ~60 fps 轮询全局光标，
-        把窗口摆到「光标 - 偏移」。这是绝对位移，DPI 缩放下也不会累积误差，
-        只用一次 IPC，不用每帧回传坐标。
+        现在只做一件事：往窗口线程投递 ``WM_START_DRAG``，由窗口过程
+        ``ReleaseCapture() + WM_NCLBUTTONDOWN/HTCAPTION`` 启动 DefWindowProc 的
+        原生移动循环。之后贴边预览、吸附落位、Win+方向键全部由系统接管。
+        用 PostMessage 而不是直接 SendMessage，是为了不把 js_api 线程卡到
+        用户松手为止。
         """
         window = self._target_window(target)
         hwnd = window_hwnd(window)
         if not hwnd:
             return {"ok": False}
-        if not ctypes.windll.user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
+        user32 = ctypes.windll.user32
+        if not user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
             return {"ok": False}
-        worker = self._drag_thread
-        if worker is not None and worker.is_alive():
-            return {"ok": True}
-        self._drag_thread = threading.Thread(
-            target=self._drag_loop, args=(hwnd,), name="homework-window-drag", daemon=True
-        )
-        self._drag_thread.start()
+        user32.PostMessageW.restype = wt.BOOL
+        user32.PostMessageW.argtypes = [ctypes.c_void_p, wt.UINT, ctypes.c_size_t, ctypes.c_ssize_t]
+        if not user32.PostMessageW(ctypes.c_void_p(hwnd), WM_START_DRAG, 0, 0):
+            return {"ok": False}
         return {"ok": True}
 
-    def _drag_loop(self, hwnd: int) -> None:
-        user32 = ctypes.windll.user32
-        try:
-            point = wt.POINT()
-            if not user32.GetCursorPos(ctypes.byref(point)):
-                return
-            left, top, _, _ = window_rect(hwnd)
-            offset_x, offset_y = int(point.x) - left, int(point.y) - top
-            self._log.debug("开始拖动窗口 hwnd=%s 偏移=(%s,%s)", hwnd, offset_x, offset_y)
-            # 最多跟 30 秒，防止按键状态卡住时线程一直转。
-            deadline = time.time() + 30
-            while time.time() < deadline:
-                if not user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
-                    break
-                if not user32.GetCursorPos(ctypes.byref(point)):
-                    break
-                user32.SetWindowPos(
-                    ctypes.c_void_p(hwnd),
-                    None,
-                    int(point.x) - offset_x,
-                    int(point.y) - offset_y,
-                    0,
-                    0,
-                    SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-                )
-                time.sleep(0.008)
-            self._log.debug("结束拖动窗口 %s", window_rect(hwnd))
-        except Exception:
-            self._log.debug("拖动主窗口失败", exc_info=True)
+    def window_resize(self, target: str = "main", edge: str = "bottom-right") -> dict:
+        """按住前端缩放热区时自己跟光标缩放窗口。
 
-    def window_resize(self, target: str = "main", edge: str = "") -> dict:
-        """拖拽四边 / 四角缩放。
-
-        和 ``window_drag`` 同样的原因：frameless 窗口上 ``WM_NCLBUTTONDOWN``
-        不会启动系统缩放循环（``ReleaseCapture()`` 也只对本线程的捕获有效），
-        所以改成自己跟光标：起点记下光标与窗口矩形，之后逐帧按位移重算。
+        为什么不用 WM_NCHITTEST 让系统跑缩放循环：客户区整个被 WebView2 的
+        子窗口盖住，鼠标消息到不了主窗口，主窗口的 WM_NCHITTEST 在边缘永远
+        收不到调用 —— 所以 2.1.2 的「原生缩放」实际上一次都没触发过。
+        拖动（标题栏）能走系统是因为它从 JS 主动注入 WM_START_DRAG；
+        缩放没有等价的注入入口，只能回到 2.1.1 的做法：记下起点光标与
+        窗口矩形，按位移重算四条边（不小于 WINDOW_MIN_* × DPI）后
+        SetWindowPos，松手由 GetAsyncKeyState(VK_LBUTTON) 判定。
         """
         window = self._target_window(target)
         hwnd = window_hwnd(window)
+        if not hwnd:
+            return {"ok": False}
         key = str(edge or "").strip().lower()
-        if not hwnd or key not in RESIZE_EDGES:
+        if key not in RESIZE_EDGES:
             return {"ok": False}
-        if not ctypes.windll.user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
+        user32 = ctypes.windll.user32
+        if not user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
             return {"ok": False}
-        worker = self._resize_thread
-        if worker is not None and worker.is_alive():
+        if user32.IsZoomed(ctypes.c_void_p(hwnd)):
+            # 最大化状态下不给缩放：先还原，否则跟出来的矩形毫无意义。
+            return {"ok": False}
+        if self._resize_thread and self._resize_thread.is_alive():
             return {"ok": True}
-        self._resize_thread = threading.Thread(
-            target=self._resize_loop, args=(hwnd, key), name="homework-window-resize", daemon=True
+        thread = threading.Thread(
+            target=self._resize_loop, args=(hwnd, key), daemon=True, name="window-resize"
         )
-        self._resize_thread.start()
+        self._resize_thread = thread
+        thread.start()
         return {"ok": True}
 
     def _resize_loop(self, hwnd: int, edge: str) -> None:
@@ -1063,8 +1432,14 @@ class DesktopBridge:
             point = wt.POINT()
             if not user32.GetCursorPos(ctypes.byref(point)):
                 return
-            start_x, start_y = int(point.x), int(point.y)
             left, top, right, bottom = window_rect(hwnd)
+            start_x, start_y = int(point.x), int(point.y)
+            # 最小尺寸是 CSS 逻辑像素，SetWindowPos 用的是物理像素，必须换算。
+            scale = dpi_scale_for_window(hwnd) or 1.0
+            min_w = max(1, int(WINDOW_MIN_WIDTH * scale))
+            min_h = max(1, int(WINDOW_MIN_HEIGHT * scale))
+            self._log.debug("开始缩放窗口 hwnd=%s 边=%s", hwnd, edge)
+            # 最多跟 30 秒，防止按键状态卡住时线程一直转。
             deadline = time.time() + 30
             while time.time() < deadline:
                 if not user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
@@ -1074,23 +1449,24 @@ class DesktopBridge:
                 dx, dy = int(point.x) - start_x, int(point.y) - start_y
                 new_left, new_top, new_right, new_bottom = left, top, right, bottom
                 if "left" in edge:
-                    new_left = min(left + dx, right - WINDOW_MIN_WIDTH)
+                    new_left = min(left + dx, right - min_w)
                 if "right" in edge:
-                    new_right = max(right + dx, left + WINDOW_MIN_WIDTH)
+                    new_right = max(right + dx, left + min_w)
                 if "top" in edge:
-                    new_top = min(top + dy, bottom - WINDOW_MIN_HEIGHT)
+                    new_top = min(top + dy, bottom - min_h)
                 if "bottom" in edge:
-                    new_bottom = max(bottom + dy, top + WINDOW_MIN_HEIGHT)
+                    new_bottom = max(bottom + dy, top + min_h)
                 user32.SetWindowPos(
                     ctypes.c_void_p(hwnd),
                     None,
-                    new_left,
-                    new_top,
-                    new_right - new_left,
-                    new_bottom - new_top,
+                    int(new_left),
+                    int(new_top),
+                    int(new_right - new_left),
+                    int(new_bottom - new_top),
                     SWP_NOZORDER | SWP_NOACTIVATE,
                 )
                 time.sleep(0.008)
+            self._log.debug("结束缩放窗口 %s", window_rect(hwnd))
         except Exception:
             self._log.debug("缩放主窗口失败", exc_info=True)
 
@@ -1571,7 +1947,7 @@ class DesktopApplication:
             js_api=self.bridge,
             width=MAIN_WIDTH,
             height=MAIN_HEIGHT,
-            min_size=(900, 620),
+            min_size=(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT),
             frameless=True,
             easy_drag=False,
             shadow=True,

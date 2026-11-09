@@ -95,19 +95,38 @@
 - `webview.create_window(..., frameless=True, easy_drag=False, shadow=True)`。
   `easy_drag` 必须为 `False`，否则整页按下都会拖拽，按钮会点不动。
 - 拖拽只认 `.pywebview-drag-region`（标题栏左侧、空白拖拽区、悬浮窗品牌区）。
-- 缩放没有系统边框，前端在四边/四角放透明热区，`mousedown` 时调用
-  `window_resize(target, edge)`。**不要**再用 `ReleaseCapture()` +
-  `SendMessageW(WM_NCLBUTTONDOWN, HTLEFT/...)`：frameless 窗口上 DefWindowProc
-  不会启动缩放循环（实测窗口完全不动），`ReleaseCapture()` 也只对本线程的鼠标捕获
-  有效，而拖动时捕获在 WebView2 的 UI 线程手里。现在改成和拖动一样「自己跟」：
-  记下起点光标与窗口矩形，按位移重算四条边（不小于 `WINDOW_MIN_*`）后
-  `SetWindowPos`，松手由 `GetAsyncKeyState(VK_LBUTTON)` 判定。
+- 拖动交给系统：标题栏 `mousedown` 只调用 `window_drag()`，后者向窗口线程投递
+  `WM_START_DRAG`，在窗口线程里 `ReleaseCapture()` + `SendMessageW(WM_NCLBUTTONDOWN, HTCAPTION)`，
+  进入系统原生移动循环。不要退回「后台线程轮询光标 + SetWindowPos」，
+  那样没有系统吸附预览和动画，也拿不到 Win11 贴靠布局。
+- **缩放必须走前端热区（2.1.3 教训）**：客户区整个被 WebView2 的子窗口盖住，
+  鼠标消息到不了主窗口——主窗口的 `WM_NCHITTEST` 在边缘永远收不到调用，
+  「让系统跑缩放循环」的方案在真机上一次都不会触发。所以四边 / 四角缩放靠
+  `.win-resize-layer` 的透明把手（z-index 90，必须盖过标题栏的 80）：
+  `mousedown` → `window_resize(target, edge)` → 后台线程记起点光标与窗口矩形，
+  按位移重算四条边（不小于 `WINDOW_MIN_* × DPI`）后 `SetWindowPos`，
+  松手由 `GetAsyncKeyState(VK_LBUTTON)` 判定。窗口过程里的 `WM_NCHITTEST`
+  分支保留（最大化按钮 `HTMAXBUTTON` 靠它支持 Win11 贴靠布局），但别指望它
+  做边框缩放。
 - Win11 圆角/描边用 DWM：`DWMWA_WINDOW_CORNER_PREFERENCE=33`、
   `DWMWA_BORDER_COLOR=34`；最大化时改直角并去掉描边。
-- 去掉系统标题栏后客户区会缩小 16×39（100% DPI），所以在窗口 `shown` 事件里
-  用 `window.resize(MAIN_WIDTH, MAIN_HEIGHT)` 把尺寸补回设计值。
+- 初始尺寸只在第一次 `shown` 时设为 `MAIN_WIDTH × MAIN_HEIGHT`；之后从托盘唤回
+  不再强制 resize，保留用户吸附后的半屏 / 四分之一屏尺寸。
 - 无边框窗口最大化默认会盖住任务栏，`fit_maximized_bounds()` 通过
   `native.MaximizedBounds = Screen.FromControl(native).WorkingArea` 限制到工作区。
+- **Windows 吸附**：`install_snap_styles()` 在 `shown` / `maximized` / `restored` 里调用，
+  把 WinForms 的 `WS_POPUP` 换成 `WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_SYSMENU`
+  —— 系统只对「可缩放 + 有最大化框」的普通窗口做 Aero Snap（Win+方向键、拖到边缘）。
+  补上 `WS_THICKFRAME` 后系统会给客户区留一圈边框（125% 下单边 10px），所以同时用
+  `_install_nc_calc()` 挂一层窗口过程，`WM_NCCALCSIZE`（wParam=TRUE）直接 `return 0`，
+  客户区重新等于整个窗口。这层 wndproc 是 ctypes 回调，必须挂在模块级 `_snap_wndproc`
+  上保活，否则被 GC 回收后整窗崩溃；转发一律走 `CallWindowProcW(原过程)`。
+- 贴边预览、半屏 / 四分之一屏落位和动画都由 Windows 自己完成，代码里不要重新引入
+  `SnapPreview` 或「按光标位置计算目标矩形」的逻辑。`WM_GETMINMAXINFO` 在原过程之后
+  修正 `ptMaxPosition / ptMaxSize / ptMaxTrackSize`，保证最大化不盖任务栏。
+  标题栏按钮矩形的 CSS 尺寸若改动，必须同步 `TITLEBAR_* / WIN_BTN_*` 常量。
+- 最小尺寸 `WINDOW_MIN_WIDTH/HEIGHT`（480×360）必须和 `create_window(min_size=...)` 一致；
+  取这么小是为了能吸进 1080p 的四分之一屏（960×540 物理像素）。
 
 **前端标题栏**
 
@@ -115,9 +134,9 @@
   页面顶部内边距、词条、滚动条轨道都用这个变量对齐。
 - 标题栏按钮通过 `data-win-action="minimize|toggle-maximize|close"` 绑定，
   双击拖拽区也会切换最大化。
-- 最大化图标靠 JS 每 1.5 秒轮询 `window_state('main')` 同步，**不要**从 UI 线程
-  调 `window.evaluate_js`（会死锁）。
-- 浏览器里打开这两个 HTML 时不会显示标题栏和缩放层，方便单独调样式。
+- 最大化图标由窗口 `maximized` / `restored` 事件立即同步，并保留 JS 轮询兜底；
+  **不要**从 UI 线程调 `window.evaluate_js`（会死锁）。
+- 浏览器里打开 HTML 时不会显示桌面标题栏，方便单独调样式。
 
 **悬浮球窗口（原生分层窗口，`ball_window.py`）**
 
@@ -235,16 +254,13 @@ CreateWindowExW(
 **隐形滚动条**
 
 - 主页面隐藏 `html` 原生滚动条，用 `.scroll-rail` + `.scroll-thumb` 自绘；
-  `window.scroll` 时重算位置并显示，1.1 秒后淡出；右侧 14px 热区
+  `window.scroll` 时重算位置并显示，1.1 秒后淡出；右侧 16px 热区
   `pointerenter` 可重新唤出，滑块悬停变墨绿并加宽。
 - 悬浮窗对 `.f-list` 单独做了一套（`f-scroll-rail` / `f-scroll-thumb`），
   轨道位置按列表 `getBoundingClientRect()` 计算，并监听 `ResizeObserver`。
 - 弹窗（登录框等）内部仍使用系统细滚动条，不受影响。
-- 层级约定（改动前务必确认，否则会互相抢鼠标）：
-  - `.win-resize-layer` 必须 `z-index: 90`，高于标题栏（80）和滚动条（65），
-    否则顶边/底边热区会被它们挡住。
-  - 右边缘缩放条宽 4px；滚动滑块 `right: 4px`（悬浮窗同样）向内让开这段距离，
-    悬停时回到 3px。以后调滑块宽度/位置时保持这个内缩量。
+- 与缩放热区的边界：右侧缩放把手宽 4 CSS px（`.win-resize-layer`），滚动滑块
+  `right: 6px`、悬停时 `right: 5px`，热区宽 16px，避免和右侧缩放互相抢鼠标。
 
 ### 外观主题
 
@@ -289,8 +305,8 @@ CreateWindowExW(
 
 | 项 | 要求 | 由谁保证 |
 | --- | --- | --- |
-| CPU/系统位数 | 仅 64 位 | `installer.iss` 的 `ArchitecturesAllowed=x64compatible` |
-| Windows 版本 | 10.0.17763（Win10 1809）及以上 | `installer.iss` 的 `MinVersion` |
+| CPU/系统位数 | 仅 64 位 | `packaging/installer.iss` 的 `ArchitecturesAllowed=x64compatible` |
+| Windows 版本 | 10.0.17763（Win10 1809）及以上 | `packaging/installer.iss` 的 `MinVersion` |
 | WebView2 Runtime | 必须存在 | 启动时 `ensure_webview2()` 自检 |
 | .NET Framework | 4.7.2+（pythonnet 用） | Win10 1809 起系统自带 4.8 |
 
@@ -313,23 +329,25 @@ pywebview 拿不到 WebView2 时只是抛异常，用户看到的就是「双击
 
 ### 关键文件
 
-| 文件 | 责任 |
+| 目录 / 文件 | 责任 |
 | --- | --- |
-| `desktop_app.py` | 桌面入口；无边框主窗口；标题栏桥接、缩放、DWM 圆角；悬浮球的生命周期、位置持久化、角标数据；托盘图标与自绘右键菜单；单实例与唤回；退出清理 |
-| `themes.py` | 主题定义与派生：内置三套主题、`normalize_theme()` 校验、`ball_palette()` 悬浮球调色板 |
-| `ball_window.py` | 悬浮球 / 右键菜单 / 概览卡片：同一个原生分层窗口（`WS_EX_LAYERED`）+ GDI+ 绘制，`UpdateLayeredWindow` 逐像素透明，自绘圆球/阴影/图标/角标；展开动画（`SetWindowPos` 缓动）、截屏虚化、命中与收起 |
-| `shrink_anim.py` | 收起主窗口的「吸进悬浮球」动画：抓一帧窗口画面（`PrintWindow` 优先，屏幕截图兜底），用分层窗口 `UpdateLayeredWindow` 按 `easeInQuad` 逐帧缩到球的位置并淡出；`_FrameClock` 提供 16 ms 高精度节拍 |
-| `homework_server.py` | 本地 HTTP API、登录、DPAPI、TronClass 数据归一化、完成状态 |
-| `homework-reminder.html` | 主界面 HTML/CSS/JS；自绘标题栏、拖拽/缩放热区、隐形滚动条 |
-| `ball.html` | 旧版悬浮球页面（WebView2 + CSS 画球）；已被 `ball_window.py` 取代，程序不再加载，仅留作历史参考 |
-| `floating.html` | 1.1.0 的旧版 380×500 悬浮窗；已被悬浮球取代，不再引用、不打包（历史文件） |
-| `homework-desk.ico` | 窗口图标与托盘图标 |
-| `HomeworkDesk.spec` | PyInstaller 打包配置 |
-| `installer.iss` | Inno Setup 安装脚本 |
-| `ChineseSimplified.isl` | Inno Setup 简体中文语言文件 |
-| `build.ps1` | 一键重新打包 EXE 和安装程序（产物到 `..\version`） |
-| `release/` | 对外分发的安装包（只留当前版本）和 `SHA256SUMS.txt` |
-| `preview.png` / `preview-ball.png` / `preview-menu.png` / `preview-card.png` | README 用的主界面、悬浮球、右键菜单、概览卡片预览图（演示数据，不含真实作业） |
+| `src/desktop_app.py` | 桌面入口；无边框主窗口；标题栏桥接、缩放、DWM 圆角；悬浮球的生命周期、位置持久化、角标数据；托盘图标与自绘右键菜单；单实例与唤回；退出清理 |
+| `src/themes.py` | 主题定义与派生：内置三套主题、`normalize_theme()` 校验、`ball_palette()` 悬浮球调色板 |
+| `src/ball_window.py` | 悬浮球 / 右键菜单 / 概览卡片：同一个原生分层窗口（`WS_EX_LAYERED`）+ GDI+ 绘制，`UpdateLayeredWindow` 逐像素透明，自绘圆球/阴影/图标/角标；展开动画（`SetWindowPos` 缓动）、截屏虚化、命中与收起 |
+| `src/shrink_anim.py` | 收起主窗口的「吸进悬浮球」动画：抓一帧窗口画面（`PrintWindow` 优先，屏幕截图兜底），用分层窗口 `UpdateLayeredWindow` 按 `easeInQuad` 逐帧缩到球的位置并淡出；`_FrameClock` 提供 16 ms 高精度节拍 |
+| `src/homework_server.py` | 本地 HTTP API、登录、DPAPI、TronClass 数据归一化、完成状态 |
+| `src/oj_client.py` | OJ（QDUOJ）只读适配层与多站点管理 |
+| `web/homework-reminder.html` | 主界面 HTML/CSS/JS；自绘标题栏、隐形滚动条 |
+| `web/ball.html` | 旧版悬浮球页面（WebView2 + CSS 画球）；已被 `ball_window.py` 取代，程序不再加载，仅留作历史参考 |
+| `web/floating.html` | 1.1.0 的旧版 380×500 悬浮窗；已被悬浮球取代，不再引用、不打包（历史文件） |
+| `assets/homework-desk.ico` | 窗口图标与托盘图标 |
+| `assets/preview*.png` | README 用的主界面、悬浮球、右键菜单、概览卡片预览图（演示数据，不含真实作业） |
+| `packaging/HomeworkDesk.spec` | PyInstaller 打包配置 |
+| `packaging/installer.iss` | Inno Setup 安装脚本 |
+| `packaging/ChineseSimplified.isl` | Inno Setup 简体中文语言文件 |
+| `packaging/build.ps1` | 一键重新打包 EXE 和安装程序（安装程序产物到仓库外 `version\`） |
+| `release/` | 对外分发的安装包与 `SHA256SUMS.txt` |
+| `docs/HANDOVER.md` / `docs/CHANGELOG.md` | 交接文档与版本变更记录 |
 
 ---
 
@@ -379,14 +397,14 @@ pywebview 拿不到 WebView2 时只是抛异常，用户看到的就是「双击
 ### 3.2.1 桌面桥 API（`js_api`，仅桌面版可用）
 
 前端通过 `window.pywebview.api.*` 调用，`window_state` / `window_control` /
-`window_resize` / `window_drag` 是自绘标题栏专用的新接口。
+`window_drag` / `window_resize` 是自绘标题栏专用接口。
 
 | 方法 | 参数 | 说明 |
 | --- | --- | --- |
 | `window_state` | `target` | 返回 `{ok, maximized}`，用于同步最大化/还原图标 |
 | `window_control` | `target, action` | `minimize` / `toggle-maximize` / `close` / `hide`；主窗 `close` = 隐藏主窗 + 显示悬浮球 |
-| `window_resize` | `target, edge` | 触发系统原生缩放；`edge` 为 `left/right/top/.../bottom-right` |
-| `window_drag` | `target` | mousedown 时调用：记下「光标 − 窗口原点」，之后 60 fps 轮询光标 + `SetWindowPos` 跟随；靠 `GetAsyncKeyState(VK_LBUTTON)` 判断松手 |
+| `window_drag` | `target` | 标题栏 mousedown 时向窗口线程投递 `WM_START_DRAG`，启动系统原生移动循环 |
+| `window_resize` | `target, edge` | 缩放热区 mousedown 时调用；`edge` 为 `left/right/top/top-left/top-right/bottom/bottom-left/bottom-right`，后台线程跟光标缩放（下限 `WINDOW_MIN_* × DPI`） |
 | `toggle_floating` | — | 显示/隐藏悬浮球，返回 `{open}` |
 | `get_floating_state` | — | 主界面轮询悬浮球是否显示 |
 | `show_main` / `show_main_and_login` | — | 回到主界面（同时收起悬浮球） |
@@ -538,15 +556,16 @@ pywebview 拿不到 WebView2 时只是抛异常，用户看到的就是「双击
 
 > 2026-10-27 这次窗口改版是在没有系统 Python / Inno Setup 的机器上完成的：
 > 用临时 venv（Python 3.12.14 + `pywebview 6.2.1` + `pyinstaller 6.22.3`）执行
-> `HomeworkDesk.spec`，产出 `dist\HomeworkDesk`，再把整目录覆盖到
+> `packaging/HomeworkDesk.spec`，产出 `dist\HomeworkDesk`，再把整目录覆盖到
 > `%LOCALAPPDATA%\Programs\HomeworkDesk`（保留了 `unins000.*`）。
 > 因此当前安装目录里的 EXE 是 **Python 3.12 构建**；正式发版仍建议用 3.14 跑
-> `build.ps1` 生成安装包。
+> `packaging/build.ps1` 生成安装包。
 
 ### 5.1.1 本次改版涉及的构建注意
 
-- `HomeworkDesk.spec` 无需改动；`datas` 已包含两个 HTML 和 `homework-desk.ico`。
-- 托盘图标取自 `hs.ICON_PATH`（打包后位于 `_internal\homework-desk.ico`）。
+- `packaging/HomeworkDesk.spec`：`datas` 现在分别带 `web/homework-reminder.html` 和
+  `assets/homework-desk.ico`；源码入口是 `src/desktop_app.py`。
+- 托盘图标取自 `hs.ICON_PATH`（打包后位于 `_internal\assets\homework-desk.ico`）。
 - 覆盖安装目录前先结束 `HomeworkDesk.exe`，并备份原目录（本次备份在
   `%TEMP%\opencode\hd-install-backup`）。
 - 若只替换 `HomeworkDesk.exe` 而不替换 `_internal`，会因 Python 版本不一致启动失败；
@@ -557,25 +576,26 @@ pywebview 拿不到 WebView2 时只是抛异常，用户看到的就是「双击
 在项目根目录运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\build.ps1
+powershell -ExecutionPolicy Bypass -File .\packaging\build.ps1
 ```
 
 输出：
 
 - `dist\HomeworkDesk\HomeworkDesk.exe`：PyInstaller 的 onedir 产物目录
-- `..\version\作业备忘-安装程序-1.5.3.exe`：安装程序（Inno Setup，`OutputDir=..\version`）
+- `..\version\作业备忘-安装程序-<版本>.exe`：安装程序（Inno Setup，脚本在 `packaging\`，
+  `OutputDir=..\..\version`）
 
 ### 5.3 单独构建
 
 ```powershell
 py -3.14 -m pip install requests pywebview pyinstaller
-py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
-& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" .\installer.iss
+py -3.14 -m PyInstaller --noconfirm --clean packaging\HomeworkDesk.spec
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" packaging\installer.iss
 ```
 
 > 本机 `py -3.14` 目前**没有装 PyInstaller**（直接跑会报 `No module named PyInstaller`），
 > 打包时用的是临时虚拟环境 `%TEMP%\hd-venv` 里的解释器：
-> `"%TEMP%\hd-venv\Scripts\python.exe" -m PyInstaller --noconfirm HomeworkDesk.spec`。
+> `"%TEMP%\hd-venv\Scripts\python.exe" -m PyInstaller --noconfirm packaging\HomeworkDesk.spec`。
 > 想用系统解释器的话先执行一次 `py -3.14 -m pip install pyinstaller`。
 >
 > 另外：如果 `dist\HomeworkDesk\HomeworkDesk.exe` 正在运行，目录会被锁住无法重建，
@@ -583,10 +603,10 @@ py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 
 ### 5.4 版本升级
 
-1. 修改 `homework_server.py` 的 `APP_VERSION`。
-2. 修改 `installer.iss` 的 `MyAppVersion`、`OutputBaseFilename`、`VersionInfoVersion`。
-3. 更新 `CHANGELOG.md`。
-4. 重新运行 `build.ps1`。
+1. 修改 `src/homework_server.py` 的 `APP_VERSION`。
+2. 修改 `packaging/installer.iss` 的 `MyAppVersion`、`OutputBaseFilename`、`VersionInfoVersion`。
+3. 更新 `docs/CHANGELOG.md`。
+4. 重新运行 `packaging/build.ps1`。
 5. 用新安装包覆盖安装；`%LOCALAPPDATA%\HomeworkDesk\data` 会保留。
 
 ### 5.5 发布
@@ -595,8 +615,8 @@ py -3.14 -m PyInstaller --noconfirm --clean HomeworkDesk.spec
 新版本只追加一行校验值，不覆盖旧包：
 
 ```powershell
-# 1. 构建，输出 ..\version\作业备忘-安装程序-1.5.3.exe
-.\build.ps1
+# 1. 构建，输出 ..\version\作业备忘-安装程序-<版本>.exe
+.\packaging\build.ps1
 
 # 2. 拷进 release（旧版本不要删，留作回滚）
 Copy-Item ..\version\作业备忘-安装程序-1.5.3.exe .\release\
@@ -791,7 +811,7 @@ Get-Content .\release\SHA256SUMS.txt -Encoding utf8
 | 真实鼠标拖动 (−120,+90) / (+120,−90) | 位置精确跟手，尺寸保持 80×80，松手写回 `ball-state.json` |
 | 日志 | 无 `逐帧时钟线程异常`、无 `显示托盘提示失败` |
 | 安装版 `HomeworkDesk.exe`（1.2.3） | 启动日志 `启动作业备忘桌面版 v1.2.3`；点 × → 球；左键展开 / 右键菜单全部正常 |
-| 安装包静默安装 | 退出码 0、150 个文件、`_internal/homework-reminder.html` 与源码字节级一致 |
+| 安装包静默安装 | 退出码 0、150 个文件、`_internal/web/homework-reminder.html` 与源码字节级一致 |
 
 > 排查手法（下次直接照做，别猜）：`WindowFromPoint` 确认球中心命中的是
 > `HomeworkDeskBallWindow` → `SendMessageTimeoutW(WM_NULL, 400ms)` 确认窗口线程
@@ -953,9 +973,11 @@ Get-Content .\release\SHA256SUMS.txt -Encoding utf8
 | --- | --- |
 | 按住标题栏窗口不动 | 页面 `mousedown`（capture 阶段）应调用 `window.pywebview.api.window_drag('main')`。用 DevTools 看 `typeof window.pywebview.api.window_drag` 是否为 `function`；不是就是后端方法没暴露（名字必须不以 `_` 开头）。 |
 | `window_drag` 返回 `{ok: false}` | 回到 Python 时左键已经松开了（`GetAsyncKeyState(VK_LBUTTON)` 的 0x8000 位没了）。常见于 IPC 很慢或只是一次单击；按住再拖即可。 |
-| 拖起来一跳一跳 | `_drag_loop` 里 `time.sleep(0.008)` 实际会被系统节拍量化成 ~15.6 ms（≈64 fps），属正常；若明显更慢，检查是不是又退回了「每帧一次 IPC」的老路。 |
-| 按边缘拖不动大小 | 热区在 `.win-resize-layer` 里，必须有 `data-resize="left/right/top/bottom/top-left..."`；`window_resize()` 只接受 `RESIZE_EDGES` 里的键。 |
-| 缩放后窗口比设定的小 / 大 | 下限是 `WINDOW_MIN_WIDTH/HEIGHT`（900×620），必须和 `create_window(min_size=...)` 一致，否则松手后会被 pywebview 拉回。 |
+| 拖起来一跳一跳 / 没有系统吸附预览 | 检查是否又退回了自绘拖动；正常路径是 `WM_START_DRAG` 在窗口线程启动系统移动循环，拖动期间不再由 Python 逐帧摆位置。 |
+| 按边缘拖不动大小 | 给窗口发 `WM_NCHITTEST` 检查边缘是否返回 HTLEFT/HTTOP 等；若全是 HTCLIENT，检查 `_install_nc_calc()` 是否挂上，以及 `hit_test()` 的坐标 / DPI 换算。 |
+| 缩放后窗口比设定的小 / 大 | 下限是 `WINDOW_MIN_WIDTH/HEIGHT`（480×360，按 DPI 缩放成物理像素），必须和 `create_window(min_size=...)` 一致，否则松手后会被 pywebview 拉回。 |
+| Win+←/→ 不吸附 | 先确认 `install_snap_styles()` 有没有跑过（日志 debug 里有「已开启窗口吸附样式」）；样式里必须没有 `WS_POPUP`、必须有 `WS_THICKFRAME`。 |
+| 窗口四周多出一圈空白边 | `_install_nc_calc()` 没挂上（句柄被重建过），`frame_inset` 会变成 10px；重新触发一次 `shown`/`maximized` 回调即可。 |
 
 ### 7.3.7 悬浮球左右键全失灵 / 拖不动
 
@@ -1085,7 +1107,7 @@ git push origin main
 
 - `git status` 里没有 `data/`、`*.log`、`credentials.dat`、`session.dat`；
 - `release/` 里只有一个安装包，且和 `SHA256SUMS.txt` 对得上；
-- 版本号（`APP_VERSION` / `installer.iss` / `CHANGELOG.md`）三处一致。
+- 版本号（`APP_VERSION` / `packaging/installer.iss` / `docs/CHANGELOG.md`）三处一致。
 
 ### 在 Releases 里发布
 
