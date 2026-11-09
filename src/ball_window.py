@@ -518,6 +518,7 @@ class BallWindow:
         self._items: list[dict] = []
         self._row_count = 0
         self._stats = {"today": 0, "urgent": 0, "overdue": 0}
+        self._level = "plain"
         self._backdrop = None
         self._content_alpha = 0.0
         self._hover_row = -1
@@ -780,8 +781,14 @@ class BallWindow:
         urgent = int(data.get("urgent") or 0)
         overdue = int(data.get("overdue") or 0)
         today = int(data.get("today") or 0)
+        # 紧急度档位（2.2.0 四档配色）：red=逾期或剩5h内，amber=5~24h，
+        # soon=24h~3天，plain=更远。老快照没有这个字段时按 urgent/overdue 推。
+        level = str(data.get("level") or "")
+        if level not in ("red", "amber", "soon", "plain"):
+            level = "red" if (urgent > 0 or overdue > 0) else "plain"
         with self._lock:
             self._counts = (total, urgent, overdue)
+            self._level = level
             self._failed = failed
             self._stats = {"today": today, "urgent": urgent, "overdue": overdue}
             if self._popup_open:
@@ -1205,8 +1212,8 @@ class BallWindow:
         rim = Pen(self._pal_color("ball_rim"), 1.0)
         g.DrawEllipse(rim, left + 0.5, top + 0.5, diameter - 1.0, diameter - 1.0)
 
-        # 紧急时的呼吸环
-        if urgent > 0 and not self._failed:
+        # 紧急（红档）时的呼吸环：逾期或剩 5 小时内才算紧急
+        if self._level == "red" and not self._failed:
             phase = (time.time() * 0.42) % 1.0
             ring_r = diameter / 2 + 2.0 + phase * 5.0
             alpha = int(125 * (1.0 - phase))
@@ -1248,9 +1255,13 @@ class BallWindow:
             return
         else:
             text = "99+" if total > 99 else str(total)
-            if urgent + overdue > 0:
+            if self._level == "red":
                 fill = self._pal_color("badge_danger")
                 ink = self._pal_color("badge_danger_text")
+                white_fill = False
+            elif self._level in ("amber", "soon"):
+                fill = self._pal_color("badge_warn")
+                ink = self._pal_color("badge_warn_text")
                 white_fill = False
             else:
                 fill = self._pal_color("badge_fill", None)
@@ -1427,12 +1438,16 @@ class BallWindow:
         remaining = item.get("remaining")
         overdue = bool(item.get("overdue"))
         urgent = bool(item.get("urgent"))
-        if remaining is None:
-            accent = self._pal_color("accent_none", 150, fade)
-        elif overdue:
+        # 2.2.0 四档：行左侧色条跟档位走；老快照没有 level 时退回 overdue/urgent
+        row_level = str(item.get("level") or "")
+        if row_level not in ("red", "amber", "soon", "plain"):
+            row_level = "red" if (overdue or urgent) else ("plain" if remaining is not None else "none")
+        if row_level == "red":
             accent = self._pal_color("accent_overdue", 235, fade)
-        elif urgent:
+        elif row_level in ("amber", "soon"):
             accent = self._pal_color("accent_urgent", 235, fade)
+        elif row_level == "none":
+            accent = self._pal_color("accent_none", 150, fade)
         else:
             accent = self._pal_color("accent_normal", 235, fade)
 
@@ -1725,8 +1740,7 @@ class BallWindow:
                 elif wparam == TIMER_WATCH:
                     self._tick_watch()
                 elif wparam == TIMER_BREATH:
-                    total, urgent, overdue = self._counts or (0, 0, 0)
-                    if urgent > 0 and not self._popup_open:
+                    if self._level == "red" and not self._popup_open:
                         self._render()
                 return 0
             if msg == WM_MOUSEACTIVATE:

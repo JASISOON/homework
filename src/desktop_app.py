@@ -28,7 +28,18 @@ from urllib.parse import urlparse
 import webview
 
 import homework_server as hs
+from alert_window import GameAlertWindow
 from ball_window import BallWindow
+from reminders import (
+    ACK_FILE,
+    ACK_EVENT_FMT,
+    EVENT_MODIFY_STATE,
+    ReminderEngine,
+    TIER_RED_SECONDS,
+    forward_toast_url,
+    parse_toast_url,
+    tier_level,
+)
 from shrink_anim import ShrinkAnimation
 
 
@@ -49,7 +60,8 @@ MAIN_HEIGHT = 830
 WINDOW_MIN_WIDTH = 480
 WINDOW_MIN_HEIGHT = 360
 BALL_SIZE = 80
-BALL_URGENT_SECONDS = 48 * 3600
+# 紧急度四档阈值收口在 reminders.py（TIER_* 常量）：
+# 红 = 逾期或剩 5 小时内，琥珀 = 5~24h，浅琥珀 = 24h~3 天（红标统计窗口）。
 BALL_CARD_ROWS = 3
 BALL_STATE_FILE = "ball-state.json"
 # 主窗口过渡动画时长，必须和 homework-reminder.html 里的 DURATION 对上。
@@ -1084,6 +1096,10 @@ class TrayController:
         else:
             func()
 
+    def run_on_ui(self, func) -> None:
+        """把函数调度到 WinForms UI 线程（弹窗等 UI 操作必须走这里）。"""
+        self._run_on_ui(self._native, func)
+
     # -- lifecycle -----------------------------------------------------
     def ensure(self, window) -> None:
         """在主窗口原生控件创建好之后挂上托盘图标。"""
@@ -1741,9 +1757,85 @@ class DesktopApplication:
         self.main: webview.Window | None = None
         self.ball: BallWindow | None = None
         self._show_event = None
+        self._ack_event = None
+        self._game_alert: GameAlertWindow | None = None
         self._exiting = False
+        # 提醒引擎（2.2.0）：三档提醒 + 每日汇总 + 游戏前提醒。
+        # 挂在 context 上，服务端 /api/reminders* 直接读得到。
+        self.engine = ReminderEngine(
+            data_dir,
+            context=self.context,
+            log=self.log,
+            icon_path=hs.ICON_PATH,
+            on_show_main=self.bridge.activate_main,
+            on_state_changed=self._on_reminders_changed,
+            on_game_red=self._show_game_alert,
+        )
+        self.context.reminders = self.engine
         # 主题变更（前端切换/导入/删除）后让悬浮球跟着换色。
         self.context.on_theme_changed = self._apply_theme_to_ball
+
+    def _on_reminders_changed(self) -> None:
+        """已阅/定时同步后让悬浮球重新取快照（角标和卡片会变）。"""
+        if self.ball is not None:
+            try:
+                self.ball.request_refresh()
+            except Exception:
+                self.log.debug("刷新悬浮球失败", exc_info=True)
+
+    def _show_game_alert(self, rows: list[dict]) -> None:
+        """游戏启动时的红档作业弹窗；必须在 WinForms UI 线程上建窗。"""
+        def _show() -> None:
+            if self._exiting:
+                return
+            try:
+                if self._game_alert is not None:
+                    self._game_alert.close()
+                red_ids = [str(row.get("id")) for row in rows if row.get("id")]
+                popup = GameAlertWindow(
+                    rows,
+                    self.log,
+                    on_read_all=lambda: self.engine.mark_read(red_ids),
+                    on_open_main=self.bridge.activate_main,
+                )
+                popup.show()
+                self._game_alert = popup
+            except Exception:
+                self.log.exception("显示游戏前提醒弹窗失败")
+
+        try:
+            self.tray.run_on_ui(_show)
+        except Exception:
+            self.log.exception("调度游戏前提醒弹窗失败")
+
+    def _listen_toast_ack(self) -> None:
+        """监听 Toast 按钮回传（临时进程点亮命名事件 → 读 ack 文件 → 处理）。"""
+        kernel32 = ctypes.windll.kernel32
+        event_name = ACK_EVENT_FMT.format(_MUTEX_SUFFIX)
+        handle = kernel32.OpenEventW(EVENT_MODIFY_STATE, False, event_name)
+        if not handle:
+            self.log.warning("创建 Toast 回传事件失败：%s", event_name)
+            return
+        self._ack_event = handle
+        ack_path = self.data_dir / ACK_FILE
+
+        def _wait() -> None:
+            while not self._exiting:
+                if kernel32.WaitForSingleObject(ctypes.c_void_p(handle), 500) != 0:
+                    continue
+                url = ""
+                try:
+                    data = json.loads(ack_path.read_text(encoding="utf-8"))
+                    if time.time() - float(data.get("ts") or 0) < 30:
+                        url = str(data.get("url") or "")
+                except FileNotFoundError:
+                    continue
+                except Exception:
+                    self.log.exception("读取 Toast 回传文件失败")
+                if url:
+                    self.engine.handle_url(url)
+
+        threading.Thread(target=_wait, name="homework-toast-ack", daemon=True).start()
 
     def _apply_theme_to_ball(self, theme: dict) -> None:
         if self.ball is None:
@@ -1756,31 +1848,46 @@ class DesktopApplication:
     def _ball_snapshot(self) -> dict:
         """给悬浮球和概览卡片用的数据快照。
 
-        角标只关心数字，卡片还要最近几条最紧急的作业，所以一次算全。
+        顺便把最新待办喂给提醒引擎（悬浮球 30 秒轮询是唯一数据源，
+        引擎不自己拉网络）。已阅的作业对悬浮球完全隐身：不计角标、
+        不进卡片（主窗口里还会以灰色「已阅」标签存在）。
         """
         payload = self.context.homework()
+        assignments = payload.get("assignments") or []
+        engine = getattr(self.context, "reminders", None)
+        read_ids = engine.read_ids() if engine else set()
+
         now = datetime.now()
-        total = urgent = overdue = today = 0
+        total = red_count = amber_count = soon_count = overdue = today = 0
         items: list[dict] = []
-        for item in payload.get("assignments") or []:
+        for item in assignments:
             if item.get("completed"):
                 continue
             # OJ 上已经交掉的实验不算待办：它只是留在列表里 7 天供回看得分
             if (item.get("oj") or {}).get("submitted"):
                 continue
+            if str(item.get("id")) in read_ids:
+                continue  # 已阅：悬浮球里隐身
             total += 1
             try:
                 due = datetime.fromisoformat(str(item.get("dueDate")))
             except Exception:
-                items.append({"name": self._item_title(item), "course": item.get("course") or ""})
+                items.append(
+                    {"name": self._item_title(item), "course": item.get("course") or "", "level": "none"}
+                )
                 continue
             if due.tzinfo is not None:
                 due = due.astimezone().replace(tzinfo=None)
             remaining = (due - now).total_seconds()
-            if remaining <= 0:
-                overdue += 1
-            elif remaining <= BALL_URGENT_SECONDS:
-                urgent += 1
+            level = tier_level(remaining)
+            if level == "red":
+                red_count += 1
+                if remaining <= 0:
+                    overdue += 1
+            elif level == "amber":
+                amber_count += 1
+            elif level == "soon":
+                soon_count += 1
             if due.date() == now.date() and remaining > 0:
                 today += 1
             items.append(
@@ -1788,19 +1895,38 @@ class DesktopApplication:
                     "name": self._item_title(item),
                     "course": str(item.get("course") or ""),
                     "remaining": remaining,
-                    "urgent": remaining <= BALL_URGENT_SECONDS,
+                    "level": level,
+                    "urgent": remaining <= TIER_RED_SECONDS,
                     "overdue": remaining <= 0,
                 }
             )
-        items.sort(key=lambda row: row.get("remaining", 0) or 0)
-        return {
-            "total": total,
-            "urgent": urgent,
+        # 没填截止日期的作业排到最后（None 当无穷大），
+        # 不能用 0 兜底 —— 那会把它们排进「三天内」区间挤掉真正的急件。
+        items.sort(key=lambda row: row["remaining"] if row.get("remaining") is not None else float("inf"))
+        # 红标优先统计三天内（含逾期）；三天内一个都没有才退回全部待办。
+        soon_window = red_count + amber_count + soon_count
+        badge_total = soon_window if soon_window > 0 else total
+        if red_count > 0:
+            badge_level = "red"
+        elif amber_count + soon_count > 0:
+            badge_level = "amber"
+        else:
+            badge_level = "plain"
+        snapshot = {
+            "total": badge_total,
+            "urgent": red_count,   # 兼容字段：卡片头部「紧急」= 红档数
             "overdue": overdue,
             "today": today,
+            "level": badge_level,
             "items": items[:BALL_CARD_ROWS],
             "failed": False,
         }
+        if engine is not None:
+            try:
+                engine.ingest(assignments)
+            except Exception:
+                self.log.exception("提醒引擎 ingest 失败")
+        return snapshot
 
     @staticmethod
     def _item_title(item: dict) -> str:
@@ -1981,6 +2107,8 @@ class DesktopApplication:
         self.create_windows(base_url)
         self._listen_show_main()
         self._listen_session_end()
+        self._listen_toast_ack()
+        self.engine.start()
 
         if os.environ.get("HOMEWORK_DESK_AUTOSHOW_FLOAT") == "1":
             # 回归测试开关：走「关闭主窗口 -> 吸进悬浮球」的完整路径，
@@ -1999,13 +2127,22 @@ class DesktopApplication:
             )
         finally:
             self._exiting = True
-            self.tray.dispose()
-            if self._show_event:
+            self.engine.stop()
+            if self._game_alert is not None:
                 try:
-                    ctypes.windll.kernel32.CloseHandle(self._show_event)
+                    self._game_alert.close()
                 except Exception:
                     pass
-                self._show_event = None
+                self._game_alert = None
+            self.tray.dispose()
+            for handle in (self._show_event, self._ack_event):
+                if handle:
+                    try:
+                        ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(handle))
+                    except Exception:
+                        pass
+            self._show_event = None
+            self._ack_event = None
             self.stop_server()
             self.log.info("桌面应用退出。")
 
@@ -2017,8 +2154,17 @@ def main() -> int:
     logger = hs.configure_logging(data_dir, debug=bool(os.environ.get("HOMEWORK_DESK_DEBUG")))
     hs.LOG = logger
 
+    # Toast 按钮回传：Windows 会用协议 URL 再拉起一个本程序实例，
+    # 把 URL 转交给常驻进程后立即退出，不创建任何窗口。
+    toast_url = parse_toast_url(sys.argv)
     mutex, already_running = acquire_single_instance()
     if already_running:
+        if toast_url:
+            if forward_toast_url(data_dir, toast_url, logger):
+                logger.info("已转发 Toast 回传：%s", toast_url)
+                return 0
+            logger.warning("转发 Toast 回传失败（常驻进程可能刚退出），忽略。")
+            return 0
         if signal_existing_instance():
             logger.info("已有实例在运行，已通知它显示主窗口。")
             return 0

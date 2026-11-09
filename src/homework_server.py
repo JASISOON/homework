@@ -71,7 +71,7 @@ from oj_client import (
 
 
 APP_NAME = "HomeworkDesk"
-APP_VERSION = "2.1.3"
+APP_VERSION = "2.2.1"
 APP_DIR = Path(__file__).resolve().parent
 
 
@@ -2976,6 +2976,27 @@ class ApiHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/api/reminders":
+            # 2.2.0 自动提醒：设置 + 已读列表（前端拿已读给卡片盖灰标签）。
+            engine = getattr(self.context, "reminders", None)
+            if engine is None:
+                # 纯网页模式（没跑桌面壳）：没有引擎，返回禁用态。
+                self._send_json(
+                    200,
+                    {
+                        "available": False,
+                        "enabled": False,
+                        "gameAlertEnabled": False,
+                        "autostart": False,
+                        "games": [],
+                        "gameIgnored": [],
+                        "read": {},
+                    },
+                )
+                return
+            self._send_json(200, {"available": True, **engine.status()})
+            return
+
         if path == "/api/themes":
             self._send_json(200, self.context.themes_payload())
             return
@@ -3352,6 +3373,64 @@ class ApiHandler(BaseHTTPRequestHandler):
                 200,
                 {"ok": True, "message": "已删除该主题。", **self.context.themes_payload()},
             )
+            return
+
+        if path == "/api/reminders/settings":
+            try:
+                data = self._read_json_body()
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+            engine = getattr(self.context, "reminders", None)
+            if engine is None:
+                self._send_json(503, {"code": "UNAVAILABLE", "message": "提醒功能仅在桌面版可用。"})
+                return
+            status = engine.set_settings(
+                enabled=data.get("enabled"),
+                autostart=data.get("autostart"),
+                game_alert_enabled=data.get("gameAlertEnabled"),
+            )
+            LOG.info("更新提醒设置：%s", {k: v for k, v in status.items() if k != "read"})
+            self._send_json(200, {"ok": True, **status})
+            return
+
+        if path == "/api/reminders/games":
+            try:
+                data = self._read_json_body()
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+            engine = getattr(self.context, "reminders", None)
+            if engine is None:
+                self._send_json(503, {"code": "UNAVAILABLE", "message": "提醒功能仅在桌面版可用。"})
+                return
+            games = data.get("games")
+            if not isinstance(games, list):
+                self._send_json(400, {"code": "VALIDATION_ERROR", "message": "games 必须是数组。"})
+                return
+            result = engine.set_games([str(g) for g in games])
+            LOG.info("更新游戏名单：%s", result.get("games"))
+            self._send_json(200, {"ok": True, **result})
+            return
+
+        if path == "/api/reminders/read":
+            try:
+                data = self._read_json_body()
+            except ValueError as exc:
+                self._send_json(400, {"code": "BAD_REQUEST", "message": str(exc)})
+                return
+            engine = getattr(self.context, "reminders", None)
+            if engine is None:
+                self._send_json(503, {"code": "UNAVAILABLE", "message": "提醒功能仅在桌面版可用。"})
+                return
+            mark_all = bool(data.get("all"))
+            ids = data.get("ids")
+            if not mark_all and not isinstance(ids, list):
+                self._send_json(400, {"code": "VALIDATION_ERROR", "message": "需要 ids 数组或 all=true。"})
+                return
+            result = engine.mark_read([str(i) for i in ids] if ids else None, mark_all=mark_all)
+            LOG.info("标记已阅：all=%s ids=%s", mark_all, ids)
+            self._send_json(200, {"ok": True, **result})
             return
 
         match = re.fullmatch(r"/api/homework/([0-9A-Za-z_-]{1,64})/submit", path)

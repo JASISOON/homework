@@ -872,6 +872,13 @@
         var(--surface-tint);
     }
 
+    .focus-card[data-level="soon"] {
+      border-color: var(--orange-line);
+      background:
+        linear-gradient(140deg, var(--gloss), transparent 55%),
+        var(--surface-tint);
+    }
+
     .focus-card__head {
       position: relative;
       z-index: 1;
@@ -908,8 +915,13 @@
     }
 
     .mini-badge[data-level="urgent"] {
-      color: var(--danger-ink);
-      background: var(--red-tint);
+      color: var(--on-accent);
+      background: var(--red-strong);
+    }
+
+    .mini-badge[data-level="soon"] {
+      color: var(--warn-ink);
+      background: var(--orange-tint);
     }
 
     .mini-badge[data-level="near"] {
@@ -983,6 +995,10 @@
     }
 
     .focus-card[data-level="near"] .focus-card__foot strong {
+      color: var(--warn-ink);
+    }
+
+    .focus-card[data-level="soon"] .focus-card__foot strong {
       color: var(--warn-ink);
     }
 
@@ -1414,7 +1430,12 @@
     }
 
     .legend-dot--urgent {
-      background: var(--red);
+      background: var(--red-strong);
+      box-shadow: 0 0 0 2px rgba(var(--red-strong-rgb), 0.11);
+    }
+
+    .legend-dot--soon {
+      background: color-mix(in srgb, var(--orange) 55%, var(--surface));
     }
 
     .legend-dot--near {
@@ -1716,12 +1737,15 @@
       box-shadow: 0 5px 22px -19px rgba(var(--red-strong-rgb), 0.62);
     }
 
+    /* 2.2.0 四档配色：红档（逾期/紧急）同级同色，琥珀（临近）、
+       浅琥珀（三天内，用 color-mix 调淡）、灰（更远）。 */
     .task--urgent {
-      --accent: var(--red);
+      --accent: var(--red-strong);
       border-color: var(--red-line);
       background:
-        linear-gradient(102deg, var(--surface-soft) 0%, var(--surface) 74%),
+        linear-gradient(102deg, var(--surface-soft) 0%, var(--surface-soft) 74%),
         var(--surface);
+      box-shadow: 0 5px 22px -19px rgba(var(--red-strong-rgb), 0.62);
     }
 
     .task--near {
@@ -1732,8 +1756,39 @@
         var(--surface);
     }
 
+    .task--soon {
+      --accent: color-mix(in srgb, var(--orange) 55%, var(--surface));
+      border-color: var(--orange-line);
+      background:
+        linear-gradient(102deg, var(--surface-soft) 0%, var(--surface) 74%),
+        var(--surface);
+    }
+
     .task--normal {
-      --accent: var(--green-tint);
+      --accent: var(--line-strong);
+    }
+
+    /* 已阅（2.2.0）：灰标签盖在卡片上，提醒静音但作业还在待办里 */
+    .task--read {
+      --accent: var(--line-strong);
+    }
+
+    .task--read .task-title {
+      color: var(--muted);
+    }
+
+    .read-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--chip);
+      font-size: 9.5px;
+      font-weight: 750;
+      white-space: nowrap;
     }
 
     .task.is-removing {
@@ -1854,12 +1909,19 @@
       box-shadow: 0 2px 7px -4px rgba(var(--red-strong-rgb), 0.75);
     }
 
+    /* 紧急（≤5h）与逾期同级同色：白字红底，靠文字区分 */
     .status-pill--urgent {
-      color: var(--danger-ink);
-      background: var(--red-tint);
+      color: var(--on-accent);
+      background: var(--red-strong);
+      box-shadow: 0 2px 7px -4px rgba(var(--red-strong-rgb), 0.75);
     }
 
     .status-pill--near {
+      color: var(--warn-ink);
+      background: var(--orange-tint);
+    }
+
+    .status-pill--soon {
       color: var(--warn-ink);
       background: var(--orange-tint);
     }
@@ -2510,11 +2572,20 @@
       font-size: 14px;
     }
 
-    .task--urgent .countdown-value {
+    .task--urgent .countdown-label {
       color: var(--danger-ink);
     }
 
+    .task--urgent .countdown-value {
+      color: var(--danger-ink);
+      font-size: 14px;
+    }
+
     .task--near .countdown-value {
+      color: var(--warn-ink);
+    }
+
+    .task--soon .countdown-value {
       color: var(--warn-ink);
     }
 
@@ -4031,6 +4102,186 @@
       margin-top: 18px;
     }
 
+    /* ---------- 提醒设置面板（2.2.0） ---------- */
+    .rem-rows {
+      display: grid;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .rem-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 11px 13px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface-soft);
+      cursor: pointer;
+      transition: border-color 150ms ease, background 150ms ease;
+    }
+
+    .rem-row:hover {
+      border-color: var(--line-strong);
+    }
+
+    .rem-row__text {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .rem-row__text strong {
+      font-size: 13px;
+      font-weight: 750;
+      color: var(--ink);
+    }
+
+    .rem-row__text small {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .rem-switch {
+      appearance: none;
+      flex: 0 0 auto;
+      width: 42px;
+      height: 24px;
+      margin: 0;
+      border-radius: 999px;
+      background: rgba(var(--muted-rgb), 0.35);
+      position: relative;
+      cursor: pointer;
+      transition: background 160ms ease;
+    }
+
+    .rem-switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--surface);
+      box-shadow: 0 1px 4px rgba(var(--shadow-rgb), 0.35);
+      transition: transform 160ms ease;
+    }
+
+    .rem-switch:checked {
+      background: var(--green);
+    }
+
+    .rem-switch:checked::after {
+      transform: translateX(18px);
+    }
+
+    .rem-switch:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .rem-games {
+      margin-top: 16px;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface-soft);
+    }
+
+    .rem-games__title {
+      margin: 0 0 9px;
+      font-size: 12.5px;
+      font-weight: 750;
+      color: var(--ink-soft);
+    }
+
+    .rem-games__title small {
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .rem-games__list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 9px;
+      min-height: 10px;
+    }
+
+    .rem-games__list:empty::after {
+      content: '名单还是空的 —— 添加游戏进程名，或者等自动建议来问';
+      color: var(--muted-weak);
+      font-size: 11.5px;
+    }
+
+    .rem-game-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 6px 3px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--ink-soft);
+      font-size: 11.5px;
+      font-weight: 650;
+    }
+
+    .rem-game-chip__del {
+      display: grid;
+      place-items: center;
+      width: 16px;
+      height: 16px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .rem-game-chip__del:hover {
+      color: var(--danger-ink);
+      background: var(--red-tint);
+    }
+
+    .rem-game-chip__del .icon {
+      width: 10px;
+      height: 10px;
+    }
+
+    .rem-games__add {
+      display: flex;
+      gap: 8px;
+    }
+
+    .rem-games__add input {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 11px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 12.5px;
+    }
+
+    .rem-games__add input:focus {
+      outline: none;
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px var(--green-tint);
+    }
+
+    .rem-games__hint {
+      margin: 9px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
     .theme-card {
       position: relative;
       padding: 11px;
@@ -4573,6 +4824,10 @@
       <path d="M12 9v4"></path>
       <path d="M12 16.5h.01"></path>
     </symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24">
+      <path d="M6 10a6 6 0 0 1 12 0c0 3.6 1.2 5 1.8 5.7.4.5.1 1.3-.6 1.3H4.8c-.7 0-1-.8-.6-1.3C4.8 15 6 13.6 6 10z"></path>
+      <path d="M9.8 19.5a2.4 2.4 0 0 0 4.4 0"></path>
+    </symbol>
     <symbol id="i-inbox" viewBox="0 0 24 24">
       <path d="M4 5.5h16v13H4z"></path>
       <path d="M4 13h4l1.5 2.5h5L16 13h4"></path>
@@ -4687,6 +4942,10 @@
         <button class="refresh-btn theme-btn" id="themeBtn" type="button" aria-haspopup="dialog" aria-controls="themeDialog" aria-label="外观主题" title="外观主题">
           <svg class="icon" aria-hidden="true"><use href="#i-palette"></use></svg>
           <span>主题</span>
+        </button>
+        <button class="refresh-btn reminder-btn" id="reminderBtn" type="button" aria-haspopup="dialog" aria-controls="reminderDialog" aria-label="提醒设置" title="自动提醒设置">
+          <svg class="icon" aria-hidden="true"><use href="#i-bell"></use></svg>
+          <span>提醒</span>
         </button>
         <button class="refresh-btn float-toggle" id="floatToggle" type="button" aria-label="显示悬浮球" aria-pressed="false" title="显示悬浮球">
           <svg class="icon" aria-hidden="true"><use href="#i-pip"></use></svg>
@@ -5037,6 +5296,66 @@
     </div>
   </dialog>
 
+  <dialog class="theme-dialog" id="reminderDialog" aria-labelledby="reminderTitle">
+    <div class="theme-panel">
+      <button class="auth-close" id="reminderClose" type="button" aria-label="关闭提醒设置">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+      </button>
+
+      <header class="auth-header">
+        <span class="theme-mark" aria-hidden="true"><svg class="icon"><use href="#i-bell"></use></svg></span>
+        <div>
+          <p class="auth-eyebrow">REMINDERS / 提醒</p>
+          <h2 id="reminderTitle">到点提醒，别靠脑子记</h2>
+        </div>
+      </header>
+
+      <p class="auth-desc">
+        截止前 24 小时、1 小时和逾期各提醒一次；每天早上补发一条当天汇总。
+        已阅的作业不再提醒（已阅 ≠ 完成，卡片上会盖灰标签）。设置只保存在本机。
+      </p>
+
+      <div class="rem-rows">
+        <label class="rem-row">
+          <span class="rem-row__text">
+            <strong>自动提醒</strong>
+            <small>总开关；关掉后所有通知和游戏前提醒都不再弹出</small>
+          </span>
+          <input type="checkbox" id="remEnabled" class="rem-switch" role="switch" aria-label="自动提醒总开关">
+        </label>
+        <label class="rem-row">
+          <span class="rem-row__text">
+            <strong>开机自启</strong>
+            <small>开机后自动在后台运行，提醒才不会漏（当前不在游戏里也会驻留托盘）</small>
+          </span>
+          <input type="checkbox" id="remAutostart" class="rem-switch" role="switch" aria-label="开机自启">
+        </label>
+        <label class="rem-row">
+          <span class="rem-row__text">
+            <strong>打开游戏前提醒</strong>
+            <small>检测到下面名单里的游戏启动时，若有逾期或 5 小时内截止的作业，弹窗提醒一次；只弹这一次，不重复打扰</small>
+          </span>
+          <input type="checkbox" id="remGameAlert" class="rem-switch" role="switch" aria-label="打开游戏前提醒">
+        </label>
+      </div>
+
+      <div class="rem-games">
+        <p class="rem-games__title">游戏名单 <small>（只有「打开游戏前提醒」开启时才生效）</small></p>
+        <div class="rem-games__list" id="remGamesList"></div>
+        <div class="rem-games__add">
+          <input id="remGameInput" type="text" placeholder="游戏进程名，如 genshin 或 stellaris.exe" spellcheck="false" maxlength="64">
+          <button class="theme-action theme-apply" id="remGameAdd" type="button">添加</button>
+        </div>
+        <p class="rem-games__hint">
+          支持关键词，不用带 .exe。Steam / Epic / WeGame 等启动器新拉起的游戏会弹一条通知问「加入名单吗」；
+          点过「忽略」的进程不会再问。窗口化、无边框全屏的游戏都能检测到。
+        </p>
+      </div>
+
+      <p class="theme-error" id="reminderError" role="alert" hidden></p>
+    </div>
+  </dialog>
+
   <dialog class="submit-dialog" id="submitDialog" aria-labelledby="submitDialogTitle" aria-describedby="submitDialogSub">
     <div class="submit-dialog__card">
       <h3 class="submit-dialog__title" id="submitDialogTitle">确认提交这份作业？</h3>
@@ -5138,8 +5457,11 @@
       const MINUTE = 60 * 1000;
       const HOUR = 60 * MINUTE;
       const DAY = 24 * HOUR;
-      const URGENT_LIMIT = 48 * HOUR;
-      const NEAR_LIMIT = 7 * DAY;
+      // 2.2.0 四档配色：红=逾期或剩5h内（逾期与临期同级同色，文字区分），
+      // 琥珀=5~24h，浅琥珀=24h~3天，灰=更远。与 reminders.py 的 TIER_* 一致。
+      const URGENT_LIMIT = 5 * HOUR;
+      const NEAR_LIMIT = 24 * HOUR;
+      const SOON_LIMIT = 3 * DAY;
       const MOCK_ANCHOR = Date.now();
 
       const MOCK_ROWS = [
@@ -5258,6 +5580,9 @@
       const state = {
         assignments: [],
         completedIds: new Set(),
+        // 2.2.0 自动提醒：已阅作业（id → 时间戳）。已阅≠完成：卡片盖灰标签、
+        // 不再弹提醒，但仍在待办里，勾「完成」才消掉。
+        readMap: {},
         pendingCompletions: new Set(),
         // 本机「已完成」记录（1.5.2）：可查询、可恢复
         completedRecords: [],
@@ -5365,6 +5690,16 @@
         themeBtn: document.getElementById('themeBtn'),
         themeDialog: document.getElementById('themeDialog'),
         themeClose: document.getElementById('themeClose'),
+        reminderBtn: document.getElementById('reminderBtn'),
+        reminderDialog: document.getElementById('reminderDialog'),
+        reminderClose: document.getElementById('reminderClose'),
+        reminderError: document.getElementById('reminderError'),
+        remEnabled: document.getElementById('remEnabled'),
+        remAutostart: document.getElementById('remAutostart'),
+        remGameAlert: document.getElementById('remGameAlert'),
+        remGamesList: document.getElementById('remGamesList'),
+        remGameInput: document.getElementById('remGameInput'),
+        remGameAdd: document.getElementById('remGameAdd'),
         themeGrid: document.getElementById('themeGrid'),
         themeImportToggle: document.getElementById('themeImportToggle'),
         themeImportPanel: document.getElementById('themeImportPanel'),
@@ -5552,6 +5887,9 @@
         }
         if (remaining <= NEAR_LIMIT) {
           return { level: 'near', remaining, label: '临近' };
+        }
+        if (remaining <= SOON_LIMIT) {
+          return { level: 'soon', remaining, label: '三天内' };
         }
         return { level: 'normal', remaining, label: '' };
       }
@@ -6843,8 +7181,12 @@
               <span class="countdown-label">${level === 'overdue' ? '已超时' : '剩余时间'}</span>
               <strong class="countdown-value">${escapeHtml(countdown)}</strong>`;
 
+        // 已阅（2.2.0）：盖灰标签，提醒静音；作业还在列表里，勾完成才消掉
+        const isRead = Boolean(state.readMap[String(item.id)]);
+        const readBadge = isRead ? '<span class="read-badge">已阅 · 不再提醒</span>' : '';
+
         return `
-          <article class="task task--${level}" data-task-id="${escapeHtml(item.id)}" data-level="${level}" data-source="${isOj ? 'oj' : 'lms'}" style="--task-index:${index}">
+          <article class="task task--${level}${isRead ? ' task--read' : ''}" data-task-id="${escapeHtml(item.id)}" data-level="${level}" data-source="${isOj ? 'oj' : 'lms'}" style="--task-index:${index}">
             <div class="task-checkcell">
               <button
                 class="task-check"
@@ -6866,6 +7208,7 @@
                 <span class="course-chip">${escapeHtml(item.course)}</span>
                 ${typeChip}
                 ${renderStatusPill(level, item.meta.label)}
+                ${readBadge}
               </div>
               <h3 class="task-title">${escapeHtml(item.name)}</h3>
               ${note}
@@ -8543,6 +8886,162 @@
         if (showing) els.themeJsonInput.focus();
       }
 
+      /* ==========================================================
+         提醒设置（2.2.0）
+         ========================================================== */
+      let reminderGames = [];
+      let reminderLoaded = false;
+
+      function showReminderError(message) {
+        if (!els.reminderError) return;
+        if (message) {
+          els.reminderError.textContent = message;
+          els.reminderError.hidden = false;
+        } else {
+          els.reminderError.hidden = true;
+        }
+      }
+
+      function renderReminderGames() {
+        if (!els.remGamesList) return;
+        els.remGamesList.innerHTML = reminderGames
+          .map(
+            (name) => `
+            <span class="rem-game-chip">
+              ${escapeHtml(name)}
+              <button class="rem-game-chip__del" type="button" data-remove-game="${escapeHtml(name)}" aria-label="移除 ${escapeHtml(name)}">
+                <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+              </button>
+            </span>`
+          )
+          .join('');
+      }
+
+      async function loadReminderState() {
+        try {
+          const payload = await requestJSON('/api/reminders');
+          const readMap = payload.read || {};
+          const changed = JSON.stringify(state.readMap) !== JSON.stringify(readMap);
+          state.readMap = readMap;
+          reminderGames = Array.isArray(payload.games) ? payload.games : [];
+          reminderLoaded = true;
+          if (els.remEnabled) els.remEnabled.checked = Boolean(payload.enabled);
+          if (els.remAutostart) els.remAutostart.checked = Boolean(payload.autostart);
+          if (els.remGameAlert) {
+            els.remGameAlert.checked = Boolean(payload.gameAlertEnabled);
+            els.remGameAlert.disabled = !payload.available;
+          }
+          if (els.remEnabled) els.remEnabled.disabled = !payload.available;
+          if (els.remAutostart) els.remAutostart.disabled = !payload.available;
+          renderReminderGames();
+          if (changed) renderAll();
+        } catch (error) {
+          // 拉不到就不挡 UI：已阅标签只是缺失，不影响看作业
+          console.warn('[作业备忘] 读取提醒设置失败：', error);
+        }
+      }
+
+      async function patchReminderSettings(patch) {
+        try {
+          const payload = await requestJSON('/api/reminders/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patch),
+          });
+          if (els.remEnabled) els.remEnabled.checked = Boolean(payload.enabled);
+          if (els.remAutostart) els.remAutostart.checked = Boolean(payload.autostart);
+          if (els.remGameAlert) els.remGameAlert.checked = Boolean(payload.gameAlertEnabled);
+          showReminderError('');
+          showToast(patch.autostart === undefined ? '提醒设置已保存' : (payload.autostart ? '开机自启已开启' : '开机自启已关闭'));
+        } catch (error) {
+          showReminderError(error.message || '保存失败，请重试。');
+          await loadReminderState();  // 回填真实状态，别让开关骗人
+        }
+      }
+
+      async function saveReminderGames(games) {
+        try {
+          const payload = await requestJSON('/api/reminders/games', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ games }),
+          });
+          reminderGames = Array.isArray(payload.games) ? payload.games : reminderGames;
+          renderReminderGames();
+          showReminderError('');
+        } catch (error) {
+          showReminderError(error.message || '游戏名单保存失败，请重试。');
+        }
+      }
+
+      function openReminderDialog() {
+        if (!els.reminderDialog) return;
+        showReminderError('');
+        if (!reminderLoaded) loadReminderState();
+        els.reminderDialog.showModal();
+      }
+
+      function closeReminderDialog() {
+        if (els.reminderDialog && els.reminderDialog.open) els.reminderDialog.close();
+      }
+
+      if (els.reminderBtn) {
+        els.reminderBtn.addEventListener('click', openReminderDialog);
+      }
+      if (els.reminderClose) {
+        els.reminderClose.addEventListener('click', closeReminderDialog);
+      }
+      if (els.reminderDialog) {
+        els.reminderDialog.addEventListener('click', (event) => {
+          if (event.target === els.reminderDialog) closeReminderDialog();
+        });
+      }
+      if (els.remEnabled) {
+        els.remEnabled.addEventListener('change', () =>
+          patchReminderSettings({ enabled: els.remEnabled.checked }));
+      }
+      if (els.remAutostart) {
+        els.remAutostart.addEventListener('change', () =>
+          patchReminderSettings({ autostart: els.remAutostart.checked }));
+      }
+      if (els.remGameAlert) {
+        els.remGameAlert.addEventListener('change', () =>
+          patchReminderSettings({ gameAlertEnabled: els.remGameAlert.checked }));
+      }
+      if (els.remGameAdd) {
+        els.remGameAdd.addEventListener('click', () => {
+          const raw = (els.remGameInput.value || '').trim().toLowerCase().replace(/\.exe$/, '');
+          if (!raw) return;
+          if (!/^[a-z0-9._\-]{1,64}$/.test(raw)) {
+            showReminderError('进程名只能包含英文、数字、点、横线和下划线。');
+            return;
+          }
+          if (reminderGames.includes(raw)) {
+            els.remGameInput.value = '';
+            return;
+          }
+          els.remGameInput.value = '';
+          saveReminderGames([...reminderGames, raw]);
+        });
+        els.remGameInput.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            els.remGameAdd.click();
+          }
+        });
+      }
+      if (els.remGamesList) {
+        els.remGamesList.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-remove-game]');
+          if (!button) return;
+          const name = button.getAttribute('data-remove-game');
+          saveReminderGames(reminderGames.filter((game) => game !== name));
+        });
+      }
+      // 已阅列表会因 Toast 按钮点击而变化，定时对齐
+      loadReminderState();
+      setInterval(loadReminderState, 60000);
+
       function showToast(message, type = 'success') {
         clearTimeout(state.toastTimer);
         setText(els.toastMessage, message);
@@ -8603,8 +9102,7 @@
       els.themeBtn.addEventListener('click', openThemeDialog);
       els.themeClose.addEventListener('click', closeThemeDialog);      els.themeDialog.addEventListener('click', (event) => {
         if (event.target === els.themeDialog) closeThemeDialog();
-      });
-      els.themeImportToggle.addEventListener('click', toggleThemeImport);
+      });      els.themeImportToggle.addEventListener('click', toggleThemeImport);
       els.themeImportApply.addEventListener('click', () =>
         importThemeJson(els.themeJsonInput ? els.themeJsonInput.value : '')
       );

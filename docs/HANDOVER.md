@@ -331,7 +331,9 @@ pywebview 拿不到 WebView2 时只是抛异常，用户看到的就是「双击
 
 | 目录 / 文件 | 责任 |
 | --- | --- |
-| `src/desktop_app.py` | 桌面入口；无边框主窗口；标题栏桥接、缩放、DWM 圆角；悬浮球的生命周期、位置持久化、角标数据；托盘图标与自绘右键菜单；单实例与唤回；退出清理 |
+| `src/desktop_app.py` | 桌面入口；无边框主窗口；标题栏桥接、缩放、DWM 圆角；悬浮球的生命周期、位置持久化、角标数据；托盘图标与自绘右键菜单；单实例与唤回；退出清理；**提醒引擎的宿主与 Toast 回传监听** |
+| `src/reminders.py` | **2.2.0 自动提醒引擎**：三档提醒（24h/1h/逾期）+ 每日汇总 + 游戏进程检测；WinRT Toast 发送（PowerShell 子进程）、`homeworkdesk://` 协议解析与转发、开机自启（HKCU Run）；四档配色阈值 `TIER_*` 也收口在这里 |
+| `src/alert_window.py` | **游戏前提醒弹窗**：无边框 WinForms 自绘窗（同托盘菜单风格），列红档作业 + 「已阅 / 打开主窗口 / 稍后再说」，必须在 WinForms UI 线程创建（经 `TrayController.run_on_ui` 调度） |
 | `src/themes.py` | 主题定义与派生：内置三套主题、`normalize_theme()` 校验、`ball_palette()` 悬浮球调色板 |
 | `src/ball_window.py` | 悬浮球 / 右键菜单 / 概览卡片：同一个原生分层窗口（`WS_EX_LAYERED`）+ GDI+ 绘制，`UpdateLayeredWindow` 逐像素透明，自绘圆球/阴影/图标/角标；展开动画（`SetWindowPos` 缓动）、截屏虚化、命中与收起 |
 | `src/shrink_anim.py` | 收起主窗口的「吸进悬浮球」动画：抓一帧窗口画面（`PrintWindow` 优先，屏幕截图兜底），用分层窗口 `UpdateLayeredWindow` 按 `easeInQuad` 逐帧缩到球的位置并淡出；`_FrameClock` 提供 16 ms 高精度节拍 |
@@ -1122,6 +1124,76 @@ git push origin main
 当前仓库**没有附带开源许可证**。如果准备公开源码，发布前需要明确选择
 MIT / Apache-2.0 / 私有仓库等授权方式；如仅自用，保持私有仓库即可。
 
-当前仓库**没有附带开源许可证**。如果准备公开源码，发布前需要明确选择
-MIT / Apache-2.0 / 私有仓库等授权方式；如仅自用，保持私有仓库即可。
+---
+
+## 8. 自动提醒系统（2.2.0）
+
+### 8.1 数据流与占用
+
+```
+悬浮球 poll_forever（既有 30 秒线程）
+  └─ _ball_snapshot()            # 唯一数据源，引擎不自己拉网络
+       ├─ 过滤已阅（read_ids）    # 已阅作业对悬浮球完全隐身
+       ├─ 四档统计 + badge_level  # red/amber/soon/plain → 角标颜色与呼吸
+       └─ engine.ingest(assignments)
+            └─ _evaluate()        # 幂等：三档提醒 / 每日汇总 / 45 天清理
+守护线程（10 秒一跳，Event.wait）
+  ├─ 游戏进程快照（Toolhelp32，仅开关打开时）
+  ├─ 兜底评估（防悬浮球线程挂掉）
+  └─ 每 3 小时 context.homework(force=True) → ball.request_refresh()
+```
+
+> **⚠ 已知坑（2.2.1 修过，别写回去）**：`ingest()` 里绝对不能触发
+> `on_state_changed`。回调会让悬浮球 `request_refresh()`，而快照内部又调
+> `ingest` —— 一旦接上就是「刷新 → ingest → 通知 → 刷新」自激循环，
+> 轮询间隔打到 0，线程满速空转吃满 GIL，悬浮球动画直接卡死。
+> `on_state_changed` 只允许由用户动作（`mark_read`）和 3 小时强制同步触发。
+
+### 8.2 状态持久化（prefs.json 的 `reminders` 键）
+
+```json
+{
+  "enabled": true,
+  "sent":   {"作业id": {"d24": 时间, "h1": 时间, "overdue": 时间}},
+  "read":   {"作业id": "标记时间"},
+  "digest_date": "2026-11-09",
+  "game_alert_enabled": false,
+  "games": ["genshin"],
+  "game_ignored": ["xxx"]
+}
+```
+
+`enabled` 提醒总开关（默认开）；`read` 已阅标记保留 45 天自动清理；
+`game_alert_enabled` 打开游戏前提醒（默认关）；`games` / `game_ignored`
+里的进程名统一小写、不带 `.exe`。
+
+### 8.3 Toast 与按钮回传
+
+- 发送：`PowerShell -EncodedCommand` 调 WinRT `ToastNotificationManager`，
+  临时进程、`CREATE_NO_WINDOW`、不等结束（保留最近 4 个句柄防泄漏）。
+- 身份：`HKCU\Software\Classes\AppUserModelId\HomeworkDesk`（DisplayName + IconUri）。
+- 协议：`HKCU\Software\Classes\homeworkdesk\shell\open\command` 指向当前程序
+  （打包态 = 安装目录的 EXE；开发态 = python + desktop_app.py）。
+- 回传：按钮 = `homeworkdesk://read/<id>` / `readall` / `show` / `addgame` / `ignoregame`。
+  点击后 Windows 拉起临时实例 → `main()` 里 `parse_toast_url` 识别 →
+  写 `data/toast-ack.json` + `SetEvent(Local\HomeworkDeskToastAck<互斥后缀>)` → 秒退；
+  常驻进程的 `_listen_toast_ack` 线程收到事件 → `engine.handle_url()`。
+- 降级预案：Win11 若拦截未签名应用的 Toast 身份，通知会退化为「PowerShell」署名；
+  功能不受影响，只是显示名不对。
+
+### 8.4 游戏前提醒
+
+- 触发：名单里的进程**新出现**（本次会话内只触发一次，进程消失后可重新触发）；
+  只有红档（逾期 / 剩 5h 内）才弹。
+- 自动建议：启动器（`reminders.LAUNCHER_EXES`）新拉起子进程 → Toast 询问加入名单；
+  冷却 10 分钟，点「忽略」记入 `game_ignored` 不再问。
+- 弹窗 `alert_window.py`：无边框 WinForms 自绘（风格同托盘菜单），必须经
+  `TrayController.run_on_ui` 调度到 WinForms UI 线程创建；
+  「已阅」把列出的红档全部静音，「稍后再说」只关窗不静音。
+
+### 8.5 阈值常量（改配色/提醒档位只动这里）
+
+`src/reminders.py`：`TIER_RED_SECONDS`(5h)、`TIER_AMBER_SECONDS`(24h)、
+`TIER_SOON_SECONDS`(3 天)；`TIER_SECONDS` 定义三档提醒边界（24h/1h/逾期）。
+前端对应 `web/homework-reminder.html` 的 `URGENT_LIMIT / NEAR_LIMIT / SOON_LIMIT`。
 
