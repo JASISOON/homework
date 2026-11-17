@@ -42,11 +42,19 @@ ALERT_COLORS = {
 # 按钮布局：三个等宽按钮排一行
 BTN_LABELS = ("已阅", "打开主窗口", "稍后再说")
 
+# 两种使用场景沿用同一个弹窗，只是头部两句文案不同：
+# game     —— 打开游戏瞬间（2.2.0）
+# startup  —— 开机自启，只留悬浮球时顺手把红档作业点出来（2.2.3）
+ALERT_TEXTS = {
+    "game": ("要开玩了？先看一眼作业", "下面这些今晚之前要交，处理完再安心玩"),
+    "startup": ("开机先看一眼作业", "这些已经逾期或 5 小时内截止，别拖到最后"),
+}
+
 
 class GameAlertWindow:
     """红档作业提醒弹窗。rows: [{name, course, due(datetime), remaining}]"""
 
-    def __init__(self, rows, log: logging.Logger, on_read_all, on_open_main):
+    def __init__(self, rows, log: logging.Logger, on_read_all, on_open_main, mode: str = "game"):
         import clr
 
         clr.AddReference("System.Windows.Forms")
@@ -58,6 +66,8 @@ class GameAlertWindow:
         self._rows = list(rows or [])[:3]
         self._on_read_all = on_read_all
         self._on_open_main = on_open_main
+        self._mode = "startup" if mode == "startup" else "game"
+        self._title_text, self._sub_text = ALERT_TEXTS[self._mode]
         self._wf = WinForms
         self._color = Color
         self._closed = False
@@ -72,7 +82,7 @@ class GameAlertWindow:
         form.BackColor = Color.FromArgb(*ALERT_COLORS["bg"])
         form.AutoScaleMode = WinForms.AutoScaleMode(0)
         form.KeyPreview = True
-        form.Text = "作业备忘 · 游戏前提醒"
+        form.Text = "作业备忘 · 开机提醒" if self._mode == "startup" else "作业备忘 · 游戏前提醒"
         self._form = form
 
         try:
@@ -172,9 +182,9 @@ class GameAlertWindow:
 
         # 头部
         y = int(ALERT_PAD * s)
-        g.DrawString("要开玩了？先看一眼作业", font_title, brush_text,
+        g.DrawString(self._title_text, font_title, brush_text,
                      self._rect(ALERT_PAD, y + 6, ALERT_WIDTH - ALERT_PAD * 2, 26))
-        g.DrawString("下面这些今晚之前要交，处理完再安心玩", font_sub, brush_muted,
+        g.DrawString(self._sub_text, font_sub, brush_muted,
                      self._rect(ALERT_PAD, y + 32, ALERT_WIDTH - ALERT_PAD * 2, 16))
 
         # 作业行（全部红档）

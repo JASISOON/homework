@@ -37,6 +37,7 @@ from reminders import (
     ReminderEngine,
     TIER_RED_SECONDS,
     forward_toast_url,
+    is_startup_launch,
     parse_toast_url,
     tier_level,
 )
@@ -154,6 +155,7 @@ SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
+SW_HIDE = 0
 GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_APPWINDOW = 0x00040000
@@ -1236,6 +1238,9 @@ class DesktopBridge:
         self._shutting_down = False
         self._tray: TrayController | None = None
         self._tray_tip_shown = False
+        # 开机自启模式：主窗口不应该自己露面，除非用户主动点开
+        self._startup_hide = False
+        self._main_requested = False
         self._lock = threading.RLock()
         self._log = logging.getLogger(hs.APP_NAME)
 
@@ -1274,6 +1279,14 @@ class DesktopBridge:
         threading.Thread(target=run, daemon=True).start()
 
     def _on_window_shown(self, window):
+        # 开机自启：pywebview 启动时会把窗口 Show 一下（hidden 的实现是
+        # Opacity=0 → Show → Hide），这里直接收回去，避免开机闪一下主界面。
+        if window is self._main and self._startup_hide:
+            try:
+                window.hide()
+            except Exception:
+                self._log.debug("收回主窗口失败", exc_info=True)
+            return
         # 先补回系统的可吸附样式，Win+方向键 / 拖到屏幕边缘才能用。
         install_snap_styles(window)
         fit_maximized_bounds(window)
@@ -1560,6 +1573,8 @@ class DesktopBridge:
 
     def activate_main(self) -> dict:
         """从托盘 / 悬浮球重新打开主界面。"""
+        self._main_requested = True   # 用户主动要的，别被开机守护再收回去
+        self._startup_hide = False
         self._cancel_shrink()
         with self._lock:
             if not self._main or self._shutting_down:
@@ -1635,6 +1650,27 @@ class DesktopBridge:
                 self._ball.hide()
             except Exception:
                 self._log.debug("收起悬浮球失败", exc_info=True)
+
+    def show_ball_only(self) -> dict:
+        """只把悬浮球亮出来（webview 事件循环还没启动时用，不能碰主窗口）。"""
+        with self._lock:
+            if self._shutting_down:
+                return {"open": False}
+            self._show_ball()
+            return {"open": bool(self._ball_visible)}
+
+    def show_floating(self) -> dict:
+        """直接把悬浮球摆出来（开机自启用，不走收起动画）。"""
+        with self._lock:
+            if self._shutting_down:
+                return {"open": False}
+            if self._main is not None:
+                try:
+                    self._main.hide()  # 兜底：确保主窗口不会抢先露一下
+                except Exception:
+                    self._log.debug("隐藏主窗口失败", exc_info=True)
+            self._show_ball()
+            return {"open": bool(self._ball_visible)}
 
     def toggle_floating(self) -> dict:
         """兼容主界面按钮：切换悬浮球的显示 / 收起。"""
@@ -1739,13 +1775,16 @@ class DesktopBridge:
 
 
 class DesktopApplication:
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, startup_mode: bool = False):
         self.data_dir = data_dir
         self.log = logging.getLogger(hs.APP_NAME)
         self.context = hs.AppContext(data_dir)
         self.server: hs.LocalServer | None = None
         self.server_thread: threading.Thread | None = None
         self.bridge = DesktopBridge(data_dir)
+        # 开机自启（--startup）：主窗口不亮出来，只摆悬浮球 + 弹一次红档提醒。
+        self.startup_mode = bool(startup_mode)
+        self.bridge._startup_hide = self.startup_mode
         self.tray = TrayController(
             on_open=self.bridge.activate_main,
             on_toggle_float=self._toggle_float_from_tray,
@@ -1785,6 +1824,9 @@ class DesktopApplication:
 
     def _show_game_alert(self, rows: list[dict]) -> None:
         """游戏启动时的红档作业弹窗；必须在 WinForms UI 线程上建窗。"""
+        self._show_alert(rows, mode="game")
+
+    def _show_alert(self, rows: list[dict], mode: str = "game") -> None:
         def _show() -> None:
             if self._exiting:
                 return
@@ -1797,22 +1839,105 @@ class DesktopApplication:
                     self.log,
                     on_read_all=lambda: self.engine.mark_read(red_ids),
                     on_open_main=self.bridge.activate_main,
+                    mode=mode,
                 )
                 popup.show()
                 self._game_alert = popup
             except Exception:
-                self.log.exception("显示游戏前提醒弹窗失败")
+                self.log.exception("显示%s弹窗失败", "开机提醒" if mode == "startup" else "游戏前提醒")
 
         try:
             self.tray.run_on_ui(_show)
         except Exception:
-            self.log.exception("调度游戏前提醒弹窗失败")
+            self.log.exception("调度提醒弹窗失败")
+
+    def _enter_ball_mode(self) -> None:
+        """开机自启：确认主窗口不露面，再补托盘图标和红档提醒。
+
+        由 ``webview.start(func=...)`` 在 GUI 起来后调用，这时窗口已创建，
+        hide 才真正生效（早于 start 时窗口还没有原生句柄）。
+        """
+        if self._exiting:
+            return
+        try:
+            self.bridge.show_floating()
+        except Exception:
+            self.log.exception("开机自启显示悬浮球失败")
+        # 兜底：pywebview 的 hide 是异步 Invoke，紧跟着的 resize / 样式重设
+        # 偶尔会把它重新显示出来（实测启动后 1~3 秒又露面）。
+        # 这里再走一次 Win32 的 SW_HIDE，确保用户开机只看到球。
+        try:
+            hwnd = window_hwnd(self.main)
+            if hwnd:
+                ctypes.windll.user32.ShowWindow(ctypes.c_void_p(hwnd), SW_HIDE)
+        except Exception:
+            self.log.debug("Win32 隐藏主窗口失败", exc_info=True)
+        self.log.info("开机自启：已进入悬浮球状态（主窗口未显示）")
+        try:
+            self.tray.ensure(self.main)
+        except Exception:
+            self.log.debug("开机自启创建托盘图标失败", exc_info=True)
+        threading.Thread(
+            target=self._startup_guard,
+            name="homework-startup-guard",
+            daemon=True,
+        ).start()
+        self._startup_alert()
+
+    def _startup_guard(self) -> None:
+        """开机后 20 秒内盯着主窗口：谁把它弄出来就再收回去。
+
+        pywebview 的 hidden 走的是 Show→Hide，WebView2 初始化过程中偶尔
+        会把窗口重新显示；单次 hide 压不住，所以短时间复查一遍。
+        用户主动点悬浮球/托盘打开时 ``_main_requested`` 会置位，立刻停手。
+        """
+        user32 = ctypes.windll.user32
+        for _ in range(20):
+            if self._exiting or self.bridge._main_requested:
+                return
+            hwnd = window_hwnd(self.main)
+            if hwnd:
+                try:
+                    if user32.IsWindowVisible(ctypes.c_void_p(hwnd)):
+                        user32.ShowWindow(ctypes.c_void_p(hwnd), SW_HIDE)
+                        self.log.info("开机自启：主窗口又被显示，已再次隐藏")
+                except Exception:
+                    pass
+            time.sleep(1)
+
+    def _startup_alert(self) -> None:
+        """等第一批待办进来：有红档作业就弹一次开机提醒，没有就安静待着。"""
+        deadline = time.time() + 90
+        while time.time() < deadline and not self._exiting:
+            if not self.engine.has_data():
+                time.sleep(3)
+                continue
+            try:
+                rows = self.engine.red_items()
+            except Exception:
+                self.log.debug("读取红档作业失败", exc_info=True)
+                return
+            if rows:
+                self.log.info("开机提醒：%d 项红档作业", len(rows))
+                self._show_alert(rows, mode="startup")
+            else:
+                self.log.info("开机提醒：没有红档作业，不弹窗")
+            return
+        self.log.info("开机提醒：90 秒内没等到作业数据，跳过")
 
     def _listen_toast_ack(self) -> None:
         """监听 Toast 按钮回传（临时进程点亮命名事件 → 读 ack 文件 → 处理）。"""
         kernel32 = ctypes.windll.kernel32
         event_name = ACK_EVENT_FMT.format(_MUTEX_SUFFIX)
-        handle = kernel32.OpenEventW(EVENT_MODIFY_STATE, False, event_name)
+        # 必须自己 Create：回传侧是 OpenEventW，没人建事件就永远打不开，
+        # 「已阅」按钮点了会静默失效。句柄一律 c_void_p，避免 64 位被截断。
+        kernel32.CreateEventW.restype = ctypes.c_void_p
+        kernel32.CreateEventW.argtypes = [
+            ctypes.c_void_p, wt.BOOL, wt.BOOL, ctypes.c_wchar_p,
+        ]
+        kernel32.WaitForSingleObject.restype = wt.DWORD
+        kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, wt.DWORD]
+        handle = kernel32.CreateEventW(None, False, False, event_name)
         if not handle:
             self.log.warning("创建 Toast 回传事件失败：%s", event_name)
             return
@@ -2074,6 +2199,8 @@ class DesktopApplication:
             width=MAIN_WIDTH,
             height=MAIN_HEIGHT,
             min_size=(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT),
+            # 开机自启时主窗口只在后台创建、不显示，用户看到的是悬浮球。
+            hidden=self.startup_mode,
             frameless=True,
             easy_drag=False,
             shadow=True,
@@ -2101,6 +2228,11 @@ class DesktopApplication:
         self._apply_theme_to_ball(self.context.active_theme())
         threading.Thread(target=self.ball.poll_forever, name="homework-ball-data", daemon=True).start()
         self.bridge._attach(self.main, self.ball)
+        if self.startup_mode:
+            # 开机自启：先把球摆出来（纯 Win32，不碰 webview）。
+            # 主窗口的隐藏必须等 webview.start 之后再做 —— 在事件循环启动前
+            # 调 main.hide() 会死等 GUI 线程，整只程序卡在这里。
+            self.bridge.show_ball_only()
 
     def run(self) -> None:
         base_url = self.start_server()
@@ -2120,6 +2252,7 @@ class DesktopApplication:
 
         try:
             webview.start(
+                func=self._enter_ball_mode if self.startup_mode else None,
                 debug=bool(os.environ.get("HOMEWORK_DESK_DEBUG")),
                 private_mode=False,
                 storage_path=str(self.data_dir / "webview"),
@@ -2157,6 +2290,7 @@ def main() -> int:
     # Toast 按钮回传：Windows 会用协议 URL 再拉起一个本程序实例，
     # 把 URL 转交给常驻进程后立即退出，不创建任何窗口。
     toast_url = parse_toast_url(sys.argv)
+    startup_mode = is_startup_launch(sys.argv)
     mutex, already_running = acquire_single_instance()
     if already_running:
         if toast_url:
@@ -2164,6 +2298,10 @@ def main() -> int:
                 logger.info("已转发 Toast 回传：%s", toast_url)
                 return 0
             logger.warning("转发 Toast 回传失败（常驻进程可能刚退出），忽略。")
+            return 0
+        if startup_mode:
+            # 开机自启时后台已经有常驻实例，别再把主窗口拽出来。
+            logger.info("已有实例在运行，开机自启跳过。")
             return 0
         if signal_existing_instance():
             logger.info("已有实例在运行，已通知它显示主窗口。")
@@ -2183,9 +2321,9 @@ def main() -> int:
         show_message(f"缺少界面文件：\n{missing}\n\n请重新安装作业备忘。", flags=0x10)
         return 1
 
-    logger.info("启动作业备忘桌面版 v%s", APP_VERSION)
+    logger.info("启动作业备忘桌面版 v%s%s", APP_VERSION, "（开机自启·悬浮球模式）" if startup_mode else "")
     try:
-        DesktopApplication(data_dir).run()
+        DesktopApplication(data_dir, startup_mode=startup_mode).run()
     except Exception as exc:
         logger.exception("桌面应用异常退出")
         show_message(f"作业备忘启动失败：\n{exc}", flags=0x10)

@@ -40,6 +40,10 @@ release/*/
 _release_*.py
 _upload_*.py
 
+# 测试用绿色版 / 演示版（平时只在仓库外的 G:\kaifa\zyw\portable，这里防手滑拷进仓库）
+portable/
+version/
+
 # ============================================================ 本地运行数据
 # 运行期数据实际写在 %LOCALAPPDATA%\HomeworkDesk\data，这里只是兜底防误提交
 data/

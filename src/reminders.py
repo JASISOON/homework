@@ -25,6 +25,7 @@ import ctypes
 import ctypes.wintypes as wt
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -53,6 +54,10 @@ TIER_SECONDS = {TIER_D24: 24 * 3600, TIER_H1: 3600, TIER_OVERDUE: None}
 TIER_RED_SECONDS = 5 * 3600       # 逾期 + 剩 5 小时内 → 红
 TIER_AMBER_SECONDS = 24 * 3600    # 剩 5~24 小时 → 琥珀
 TIER_SOON_SECONDS = 3 * 86400     # 剩 24 小时~3 天 → 浅琥珀（红标统计窗口）
+
+# 后台从远端拉一次作业数据的间隔。2.2.3 起从 3 小时缩到 30 分钟：
+# 新布置 / 改期的作业能更快进来，剩余时间也跟得上。
+FORCE_SYNC_SECONDS = 30 * 60
 
 TIER_LEVEL_RED = "red"
 TIER_LEVEL_AMBER = "amber"
@@ -103,11 +108,71 @@ def fmt_remaining(seconds: float) -> str:
     return f"剩 {days} 天" + (f" {hours % 24} 小时" if hours % 24 else "")
 
 
+def _remaining_text(remaining: float) -> str:
+    """合并通知里的短文本：已逾期 2 小时 / 还剩 35 分钟。"""
+    overdue = remaining <= 0
+    secs = int(abs(remaining))
+    if secs < 60:
+        span = f"{secs} 秒"
+    elif secs < 3600:
+        span = f"{secs // 60} 分钟"
+    elif secs < 48 * 3600:
+        hours = secs // 3600
+        minutes = (secs % 3600) // 60
+        span = f"{hours} 小时" + (f" {minutes} 分" if minutes and hours < 8 else "")
+    else:
+        days = secs // 86400
+        span = f"{days} 天" + (f" {secs % 86400 // 3600} 小时" if secs % 86400 // 3600 else "")
+    return ("已逾期 " if overdue else "还剩 ") + span
+
+
 # ---------------------------------------------------------------------------
 # 协议 URL：解析 / 转发（临时进程侧）
 # ---------------------------------------------------------------------------
 
 _ID_RE = re.compile(r"[A-Za-z0-9_.\-]{1,128}")
+
+# 游戏名单条目：允许空格和中文（中文走下面的别名表映射到 exe 关键词）
+_GAME_RE = re.compile(r"[A-Za-z0-9_.\- \u4e00-\u9fff]{1,64}")
+
+# 进程名里不会有中文，常见中文名/带空格的叫法在这里映射成 exe 关键词
+GAME_ALIASES = {
+    "三角洲": ("deltaforceclient",),
+    "三角洲行动": ("deltaforceclient",),
+    "delta force": ("deltaforceclient",),
+    "无畏契约": ("valorant",),
+    "英雄联盟": ("league of legends", "leagueclient"),
+    "cs2": ("cs2", "counter-strike"),
+    "绝地求生": ("pubg",),
+    "永劫无间": ("narakabladepoint",),
+}
+
+
+def _game_targets(keyword: str) -> tuple[str, ...]:
+    keyword = " ".join(str(keyword or "").strip().lower().split())
+    if keyword.endswith(".exe"):
+        keyword = keyword[:-4].strip()
+    targets = GAME_ALIASES.get(keyword)
+    if targets:
+        return targets
+    return (keyword,) if keyword else ()
+
+
+def _game_hits(names: set[str], keyword: str) -> bool:
+    """名单条目命中任意进程名（等值或子串，支持关键词）。"""
+    for target in _game_targets(keyword):
+        for name in names:
+            if name == target or target in name:
+                return True
+    return False
+
+
+def _is_game_exe(exe: str, keywords) -> bool:
+    for keyword in keywords or ():
+        for target in _game_targets(keyword):
+            if exe == target or target in exe:
+                return True
+    return False
 
 
 def parse_toast_url(argv: list[str]) -> str | None:
@@ -245,6 +310,10 @@ def send_toast(title: str, body: str, actions: list[tuple[str, str]] | None = No
     script = (
         "[void][Windows.UI.Notifications.ToastNotificationManager,"
         " Windows.UI.Notifications, ContentType=WindowsRuntime]\n"
+        # Windows PowerShell 5.1 不会自动加载 WinRT 的 XmlDocument，
+        # 少了这一行 New-Object 会抛「找不到类型」，脚本静默失败、通知一条都不显示。
+        "[void][Windows.Data.Xml.Dom.XmlDocument,"
+        " Windows.Data.Xml.Dom, ContentType=WindowsRuntime]\n"
         "$xml = New-Object Windows.Data.Xml.Dom.XmlDocument\n"
         f"$xml.LoadXml('{xml}')\n"
         "$toast = New-Object Windows.UI.Notifications.ToastNotification($xml)\n"
@@ -274,13 +343,19 @@ def send_toast(title: str, body: str, actions: list[tuple[str, str]] | None = No
 # ---------------------------------------------------------------------------
 
 _RUN_VALUE = "HomeworkDesk"
+# 开机自启专用参数：带这个参数启动时只摆出悬浮球，不弹主界面。
+STARTUP_FLAG = "--startup"
 
 
 def autostart_command() -> str:
     if getattr(sys, "frozen", False):
-        return f'"{sys.executable}"'
+        return f'"{sys.executable}" {STARTUP_FLAG}'
     script = Path(__file__).with_name("desktop_app.py")
-    return f'"{sys.executable}" "{script}"'
+    return f'"{sys.executable}" "{script}" {STARTUP_FLAG}'
+
+
+def is_startup_launch(argv: list[str] | None = None) -> bool:
+    return STARTUP_FLAG in (sys.argv if argv is None else argv)
 
 
 def get_autostart() -> bool:
@@ -294,6 +369,24 @@ def get_autostart() -> bool:
             return bool(value)
     except FileNotFoundError:
         return False
+    except Exception:
+        return False
+
+
+def autostart_is_current() -> bool:
+    """注册表里的自启命令是否已是当前写法（带 --startup）。
+
+    2.2.2 及以前写入的是不带参数的命令，开机时会直接弹出主界面。
+    这里用来判断要不要静默改写一次，省得用户去设置里重新勾选自启。
+    """
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, _RUN_VALUE)
+            return str(value).strip() == autostart_command()
     except Exception:
         return False
 
@@ -390,6 +483,7 @@ LAUNCHER_EXES = {
     "upc", "ubisoftconnect",        # 育碧
     "rockstarservice", "socialclub",
     "qqgameloading", "txplatform",  # 腾讯系辅助进程（宽松匹配）
+    "df_launcher", "delta_force_launcher",  # 三角洲自带启动器
 }
 
 # 自动建议时跳过的明显系统/常用进程（父进程可能是 explorer 等误判兜底）
@@ -398,6 +492,13 @@ _SUGGEST_BLOCKLIST = {
     "wps", "wpscloudsvr", "potplayer", "vlc", "cloudmusic", "qqmusic",
     "bilibili", "dingtalk", "feishu", "obs64", "svchost", "conhost",
     "python", "pythonw", "powershell", "cmd", "runtimebroker",
+    # Steam / 游戏自带的小工具，不是游戏本体（曾把 gldriverquery64 当成新游戏）
+    "gldriverquery", "gldriverquery64", "steamerrorreporter", "steamservice",
+    "gameoverlayui", "vgui2", "steamwebhelper", "steamtours",
+    "crashpad_handler", "bugreport", "gpu_detect64", "msdkweblauncher",
+    "msdkwebviewrender", "es_brd_updater", "es_broadcast_bridge",
+    "closevbs", "ace-helper", "ace-service64", "ace-setup64", "ace-tray",
+    "tinydl", "tiny_cache",
 }
 
 _SUGGEST_COOLDOWN = 600  # 两条自动建议之间至少隔 10 分钟
@@ -442,6 +543,7 @@ class ReminderEngine:
         self._last_prune = time.time()
         self._last_force = time.time()
         self._last_suggest = 0.0
+        self._ingest_count = 0
 
         # 游戏检测状态（内存态）
         self._prev_procs: set[str] = set()
@@ -489,6 +591,17 @@ class ReminderEngine:
 
     def start(self) -> None:
         register_toast_identity(self.icon_path, self.log)
+        # 老版本写入的自启命令没有 --startup（开机就会弹出主界面），
+        # 这里静默改写成当前写法，用户不用再去设置里重勾一次。
+        # 绿色版测试可以设 HOMEWORK_DESK_SKIP_AUTOSTART_FIX=1 跳过，
+        # 免得把自启项改到临时目录里的测试 exe 上。
+        try:
+            if os.environ.get("HOMEWORK_DESK_SKIP_AUTOSTART_FIX") != "1":
+                if get_autostart() and not autostart_is_current():
+                    if set_autostart(True):
+                        self.log.info("已更新开机自启命令：改为只显示悬浮球（%s）", STARTUP_FLAG)
+        except Exception:
+            self.log.debug("更新开机自启命令失败", exc_info=True)
         if self._thread and self._thread.is_alive():
             return
         self._thread = threading.Thread(target=self._loop, name="homework-reminders", daemon=True)
@@ -507,7 +620,19 @@ class ReminderEngine:
         """
         with self._lock:
             self._assignments = list(assignments or [])
+            self._ingest_count += 1
             self._evaluate_locked()
+
+    def has_data(self) -> bool:
+        """是否已经拿到过至少一批待办快照（开机提醒用它判「数据到位」。"""
+        with self._lock:
+            return self._ingest_count > 0
+
+    def red_items(self) -> list[dict]:
+        """当前红档待办（逾期或 5 小时内），按剩余时间升序。"""
+        with self._lock:
+            rows = self._pending_items()
+        return [row for row in rows if row["remaining"] <= TIER_RED_SECONDS]
 
     def read_ids(self) -> set[str]:
         return set(self.state.get("read") or {})
@@ -544,10 +669,10 @@ class ReminderEngine:
     def set_games(self, games: list[str]) -> dict:
         cleaned: list[str] = []
         for name in games or []:
-            name = str(name).strip().lower()
+            name = " ".join(str(name).strip().lower().split())
             if name.endswith(".exe"):
-                name = name[:-4]
-            if name and _ID_RE.fullmatch(name) and name not in cleaned and len(cleaned) < 50:
+                name = name[:-4].strip()
+            if name and _GAME_RE.fullmatch(name) and name not in cleaned and len(cleaned) < 50:
                 cleaned.append(name)
         self.state["games"] = cleaned
         self._game_running.clear()  # 名单变化后重新判定会话
@@ -612,7 +737,7 @@ class ReminderEngine:
     # -------------------------------------------------------------- 主循环
 
     def _loop(self) -> None:
-        """10 秒一跳：游戏快照 + 兜底评估 + 3 小时强制同步。"""
+        """10 秒一跳：游戏快照 + 兜底评估 + 半小时强制同步。"""
         while not self._stop.wait(10.0):
             try:
                 self._tick()
@@ -626,10 +751,11 @@ class ReminderEngine:
         # 2) 兜底评估（正常情况下 ingest 每 30 秒都会触发；这里兜悬停球挂掉/数据静止）
         with self._lock:
             self._evaluate_locked()
-        # 3) 3 小时强制同步一次远端，随后让悬浮球重新取快照 → ingest 回来
-        if time.time() - self._last_force >= 3 * 3600:
+        # 3) 每 30 分钟强制同步一次远端，随后让悬浮球重新取快照 → ingest 回来。
+        # 先按 30 分钟是为了让新增/改期的作业尽快进来，剩余时间也跟着刷新。
+        if time.time() - self._last_force >= FORCE_SYNC_SECONDS:
             self._last_force = time.time()
-            self.log.info("后台定时同步作业数据")
+            self.log.info("后台定时同步作业数据（每 %d 分钟）", FORCE_SYNC_SECONDS // 60)
             try:
                 self.context.homework(force=True)
             except Exception:
@@ -672,8 +798,8 @@ class ReminderEngine:
         if not self.state.get("enabled", True):
             return
         self._maybe_prune()
-        self._maybe_digest()
-        self._evaluate_tiers()
+        pushed = self._evaluate_tiers()
+        self._maybe_digest(pushed)
 
     def _maybe_prune(self) -> None:
         if time.time() - self._last_prune < 3600:
@@ -692,12 +818,18 @@ class ReminderEngine:
                     cleaned[aid] = tiers
         self.state["sent"] = cleaned
 
-    def _maybe_digest(self) -> None:
+    def _maybe_digest(self, pushed: int = 0) -> None:
         """每日汇总：8 点后第一次评估补发。"""
         today = datetime.now().strftime("%Y-%m-%d")
         if self.state.get("digest_date") == today:
             return
         if datetime.now().hour < 8:
+            return
+        if pushed:
+            # 刚弹过合并提醒，内容已经覆盖今天该看的作业，不再多弹一条汇总
+            self.state["digest_date"] = today
+            self._save_state()
+            self.log.info("刚发过合并提醒，今天的汇总不再单独弹")
             return
         self.state["digest_date"] = today
         self._save_state()
@@ -720,8 +852,10 @@ class ReminderEngine:
         )
         self.log.info("已发每日汇总：%d 项", len(items))
 
-    def _evaluate_tiers(self) -> None:
+    def _evaluate_tiers(self) -> int:
+        """把所有该提醒的作业攒成一条通知发出去，不再一条一条弹。返回本次通知里的条数。"""
         sent: dict = self.state.setdefault("sent", {})
+        pending: list[tuple[dict, str]] = []
         for row in self._pending_items():
             tier = reminder_tier(row["remaining"])
             if tier is None:
@@ -730,27 +864,51 @@ class ReminderEngine:
             tiers = sent.setdefault(aid, {})
             if tier in tiers:
                 continue
-            self._send_tier_toast(row, tier)
-            tiers[tier] = datetime.now().isoformat(timespec="seconds")
-            self._save_state()
+            pending.append((row, tier))
+        if not pending:
+            return 0
+        self._send_batch_toast(pending)
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        for row, tier in pending:
+            sent.setdefault(row["id"], {})[tier] = now_iso
+        self._save_state()
+        return len(pending)
 
-    def _send_tier_toast(self, row: dict, tier: str) -> None:
-        due_text = row["due"].strftime("%m月%d日 %H:%M")
-        actions = [
-            ("已阅，别再提醒了", f"{TOAST_SCHEME}://read/{quote(row['id'])}"),
-            ("打开主窗口", f"{TOAST_SCHEME}://show"),
-        ]
-        if tier == TIER_OVERDUE:
-            title = f"「{row['name']}」已逾期"
-            body = f"原定 {due_text} 截止，请尽快处理"
-        elif tier == TIER_H1:
-            title = f"「{row['name']}」还有 1 小时截止"
-            body = f"{due_text} 截止" + (f" · {row['course']}" if row["course"] else "")
+    MAX_TOAST_LINES = 4
+
+    def _send_batch_toast(self, pending: list[tuple[dict, str]]) -> None:
+        """pending 已按剩余时间升序；一条通知里列出全部（超长才折行省略）。"""
+        total = len(pending)
+        overdue = sum(1 for _row, tier in pending if tier == TIER_OVERDUE)
+        if overdue and overdue == total:
+            title = f"{total} 项作业已逾期"
+        elif overdue:
+            title = f"{total} 项作业要处理（{overdue} 项已逾期）"
         else:
-            title = f"「{row['name']}」明天这个时候截止"
-            body = f"{due_text} 截止 · {fmt_remaining(row['remaining'])}"
-        ok = send_toast(title, body, actions)
-        self.log.info("发送%s提醒：%s（%s）", tier, row["name"], "成功" if ok else "失败")
+            title = f"{total} 项作业要处理"
+
+        lines = [
+            f"{row['name']} · {_remaining_text(row['remaining'])}"
+            for row, _tier in pending[: self.MAX_TOAST_LINES]
+        ]
+        rest = total - len(lines)
+        if rest > 0:
+            lines.append(f"…另 {rest} 项，打开主窗口看全部")
+        body = "\n".join(lines)
+        ok = send_toast(
+            title,
+            body,
+            [
+                ("全部已阅", f"{TOAST_SCHEME}://readall"),
+                ("打开主窗口", f"{TOAST_SCHEME}://show"),
+            ],
+        )
+        self.log.info(
+            "发送合并提醒：%d 项（%s）%s",
+            total,
+            "成功" if ok else "失败",
+            "｜" + " / ".join(row["name"] for row, _tier in pending[: self.MAX_TOAST_LINES]),
+        )
 
     # -------------------------------------------------------------- 游戏检测
 
@@ -759,31 +917,36 @@ class ReminderEngine:
         if not procs:
             return
         names = set(procs.keys())
-        games = set(self.state.get("games") or [])
-        ignored = set(self.state.get("game_ignored") or [])
+        games = list(self.state.get("games") or [])
+        ignored = list(self.state.get("game_ignored") or [])
 
-        # 名单命中：新出现的游戏进程 → 触发一次提醒
-        hitting = names & games
+        # 名单命中：支持关键词（子串）与中文别名，命中项以名单条目自身为标识
+        hitting = {g for g in games if _game_hits(names, g)}
         newly = hitting - self._game_running
         self._game_running = hitting
         if newly:
+            self.log.info("检测到游戏进程：%s", "、".join(sorted(newly)))
             self._fire_game_alert()
 
         # 自动建议：启动器新拉起的子进程
-        launchers = {n for n in names if n in LAUNCHER_EXES}
+        launchers = {n for n in names if n in LAUNCHER_EXES or "launcher" in n}
         if launchers:
             self._pid_map = {
                 info[0]: name for name, info in procs.items()
             }
-            known = games | ignored | LAUNCHER_EXES | _SUGGEST_BLOCKLIST
+            known = games + ignored + list(LAUNCHER_EXES) + list(_SUGGEST_BLOCKLIST)
             candidates: list[str] = []
             for name in names:
-                if name in known:
+                if name in LAUNCHER_EXES or name in _SUGGEST_BLOCKLIST:
                     continue
                 pid, parent = procs[name]
                 parent_name = self._pid_map.get(parent, "")
-                if parent_name in LAUNCHER_EXES:
-                    candidates.append(name)
+                if not (parent_name in LAUNCHER_EXES or "launcher" in parent_name):
+                    continue
+                # 已在名单 / 已忽略的（含关键词命中的）不再问
+                if known and _is_game_exe(name, known):
+                    continue
+                candidates.append(name)
             if candidates and time.time() - self._last_suggest >= _SUGGEST_COOLDOWN:
                 self._last_suggest = time.time()
                 self._send_suggest(candidates[0], self._pid_map.get(procs[candidates[0]][1], "?"))

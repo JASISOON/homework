@@ -71,7 +71,7 @@ from oj_client import (
 
 
 APP_NAME = "HomeworkDesk"
-APP_VERSION = "2.2.1"
+APP_VERSION = "2.2.3"
 APP_DIR = Path(__file__).resolve().parent
 
 

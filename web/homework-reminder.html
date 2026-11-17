@@ -4203,6 +4203,27 @@
       font-weight: 500;
     }
 
+    .rem-badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(240, 180, 41, 0.38);
+      background: rgba(240, 180, 41, 0.16);
+      color: #F0B429;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 18px;
+      vertical-align: 2px;
+      letter-spacing: .2px;
+    }
+
+    .rem-row__title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
     .rem-games__list {
       display: flex;
       flex-wrap: wrap;
@@ -5332,8 +5353,8 @@
         </label>
         <label class="rem-row">
           <span class="rem-row__text">
-            <strong>打开游戏前提醒</strong>
-            <small>检测到下面名单里的游戏启动时，若有逾期或 5 小时内截止的作业，弹窗提醒一次；只弹这一次，不重复打扰</small>
+            <span class="rem-row__title"><strong>打开游戏前提醒</strong><span class="rem-badge">正在测试</span></span>
+            <small>检测到下面名单里的游戏启动时，若有逾期或 5 小时内截止的作业，弹窗提醒一次；只弹这一次，不重复打扰（功能仍在打磨，遇到漏检或误报可以反馈）</small>
           </span>
           <input type="checkbox" id="remGameAlert" class="rem-switch" role="switch" aria-label="打开游戏前提醒">
         </label>
@@ -5343,7 +5364,7 @@
         <p class="rem-games__title">游戏名单 <small>（只有「打开游戏前提醒」开启时才生效）</small></p>
         <div class="rem-games__list" id="remGamesList"></div>
         <div class="rem-games__add">
-          <input id="remGameInput" type="text" placeholder="游戏进程名，如 genshin 或 stellaris.exe" spellcheck="false" maxlength="64">
+          <input id="remGameInput" type="text" placeholder="游戏进程名或关键词，如 deltaforce 或 三角洲" spellcheck="false" maxlength="64">
           <button class="theme-action theme-apply" id="remGameAdd" type="button">添加</button>
         </div>
         <p class="rem-games__hint">
@@ -9012,8 +9033,8 @@
         els.remGameAdd.addEventListener('click', () => {
           const raw = (els.remGameInput.value || '').trim().toLowerCase().replace(/\.exe$/, '');
           if (!raw) return;
-          if (!/^[a-z0-9._\-]{1,64}$/.test(raw)) {
-            showReminderError('进程名只能包含英文、数字、点、横线和下划线。');
+          if (!/^[a-z0-9._\- \u4e00-\u9fff]{1,64}$/.test(raw)) {
+            showReminderError('只能填英文、数字、中文、空格、点、横线或下划线。');
             return;
           }
           if (reminderGames.includes(raw)) {

@@ -1094,7 +1094,7 @@ Get-Content .\release\SHA256SUMS.txt -Encoding utf8
 | --- | --- |
 | 远程 | `https://github.com/JASISOON/homework.git` |
 | 分支 | `main`（跟踪 `origin/main`） |
-| 当前版本 | 1.4.3 |
+| 当前版本 | 2.2.3 |
 
 ### 日常更新流程
 
@@ -1140,14 +1140,34 @@ MIT / Apache-2.0 / 私有仓库等授权方式；如仅自用，保持私有仓�
 守护线程（10 秒一跳，Event.wait）
   ├─ 游戏进程快照（Toolhelp32，仅开关打开时）
   ├─ 兜底评估（防悬浮球线程挂掉）
-  └─ 每 3 小时 context.homework(force=True) → ball.request_refresh()
+  └─ 每 30 分钟 context.homework(force=True) → ball.request_refresh()
 ```
 
 > **⚠ 已知坑（2.2.1 修过，别写回去）**：`ingest()` 里绝对不能触发
 > `on_state_changed`。回调会让悬浮球 `request_refresh()`，而快照内部又调
 > `ingest` —— 一旦接上就是「刷新 → ingest → 通知 → 刷新」自激循环，
 > 轮询间隔打到 0，线程满速空转吃满 GIL，悬浮球动画直接卡死。
-> `on_state_changed` 只允许由用户动作（`mark_read`）和 3 小时强制同步触发。
+> `on_state_changed` 只允许由用户动作（`mark_read`）和 30 分钟强制同步触发。
+
+> **2.2.2 变更**：提醒不再逐条发。`_evaluate_tiers()` 先把本轮所有该提醒的
+> `(row, tier)` 攒进 `pending`，交给 `_send_batch_toast()` 发**一条**通知
+> （正文每行一项，`MAX_TOAST_LINES = 4`，超出加「…另 N 项」；按钮只有
+> `readall` / `show`），发完再统一写 `sent`。返回值是本轮条数，
+> `_evaluate_locked()` 拿它喂给 `_maybe_digest(pushed)`——刚推过合并提醒时
+> 当天汇总直接跳过（否则启动会连弹两条内容重叠的通知）。
+> 展平后旧的 `_send_tier_toast()`（每条一个「已阅，别再提醒了」按钮）已删除，
+> 不要照着老文档加回来。
+
+> **2.2.3 变更（开机自启 / 提醒 / 同步）**：自启命令改成 `"<exe>" --startup`
+> （`STARTUP_FLAG`、`is_startup_launch()`、`autostart_command()`），老的无线参自启项
+> 由 `start()` 里 `autostart_is_current()` 判定后静默改写；`FORCE_SYNC_SECONDS`
+> 由 3 小时改为 **30 分钟**。`--startup` 下 `create_window(hidden=True)` 之后仍要在
+> `_on_window_shown` 里补 `ShowWindow(SW_HIDE)` 并用 `_main_hidden_until` 短时守护——
+> Windows 后端的 hidden 实现是「Opacity=0 → Show → Hide」，窗口会露 1~2 秒，而且
+> 后续窗口初始化会把它重新显示出来。**别在 `webview.start()` 之前调 `main.hide()`**，
+> 那时 GUI 事件循环没起来，会直接死锁。拿到第一批数据后 `_startup_alert()` 检查
+> `red_items()`，有逾期或剩 5h 内的就弹 `GameAlertWindow(mode="startup")`
+> （文案「开机先看一眼作业」，与游戏前提醒共用同一个窗，靠 `mode` 切标题/副标题）。
 
 ### 8.2 状态持久化（prefs.json 的 `reminders` 键）
 
@@ -1165,7 +1185,8 @@ MIT / Apache-2.0 / 私有仓库等授权方式；如仅自用，保持私有仓�
 
 `enabled` 提醒总开关（默认开）；`read` 已阅标记保留 45 天自动清理；
 `game_alert_enabled` 打开游戏前提醒（默认关）；`games` / `game_ignored`
-里的进程名统一小写、不带 `.exe`。
+里的条目统一小写、不带 `.exe`，**按关键词子串匹配进程名**（2.2.2 起），
+中文名走 `reminders.GAME_ALIASES`（`三角洲` → `deltaforceclient` 等）。
 
 ### 8.3 Toast 与按钮回传
 
